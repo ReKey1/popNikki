@@ -7,6 +7,10 @@ updates:
     groups:
       dependencies:
         patterns: ['*']
+    ignore:
+      # typescript-eslint supports TypeScript <6.1; bump manually once it supports the next major.
+      - dependency-name: typescript
+        update-types: ['version-update:semver-major']
   - package-ecosystem: github-actions
     directory: /
     schedule:
