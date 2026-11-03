@@ -15,6 +15,19 @@
     "enabled": true,
   },
   "upload_source_maps": true,
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "popnikki",
+      "database_id": "5a9abb73-2ef9-4061-8d57-194835ed9cb0",
+    },
+  ],
+  "r2_buckets": [
+    {
+      "binding": "FILES",
+      "bucket_name": "popnikki-files",
+    },
+  ],
   /**
    * Smart Placement
    * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement

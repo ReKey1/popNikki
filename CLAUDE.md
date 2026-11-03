@@ -26,6 +26,20 @@ Hosting is **Cloudflare**, which has been confirmed. Remaining open decisions ar
 
 CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs lint (without fixing), the format check, type-check, tests and the build on every push and PR. **Run `npm run lint`, `npm run type-check` and `npm test` before pushing.**
 
+## Branches
+
+- **`dev`** is the default branch. All work and Dependabot updates land here, either directly or through feature-branch PRs into `dev`.
+- **`prod`** is the released code. A GitHub ruleset blocks direct pushes, force-pushes and deletion, so it changes only through a PR from `dev` with a passing `check` CI job.
+- Never push to or merge into `prod` without the owner's go-ahead.
+
+## Cloudflare resources
+
+- Account login is done with `wrangler login`.
+- **D1:** the database is `popnikki` (binding `DB`, location hint APAC). It is created, but it has no schema yet.
+- **R2:** the bucket is `popnikki-files` (binding `FILES`). It is in `wrangler.jsonc` but **not created yet**. R2 must first be activated in the Cloudflare dashboard, and then the bucket is created with `npx wrangler r2 bucket create popnikki-files --location apac`.
+- Local dev and tests use local simulations of both, so they don't need the real resources.
+- Nothing is deployed yet, and the domain isn't chosen.
+
 ## Architecture
 
 The project was scaffolded with Cloudflare's official tool (`npm create cloudflare -- --framework=vue`). Lint, format and test configs come from `create-vue`. One Worker serves both halves:
