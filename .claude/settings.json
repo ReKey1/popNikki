@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": ["Bash(npm run *)", "Bash(npx vitest *)", "Bash(npx wrangler types*)"],
+    "ask": ["Bash(git push *)"],
+    "deny": ["Read(./.dev.vars*)", "Read(./secrets/**)", "Read(./tags/**)"]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/format.mjs\""
+          }
+        ]
+      }
+    ]
+  },
+  "extraKnownMarketplaces": {
+    "cloudflare": {
+      "source": { "source": "github", "repo": "cloudflare/skills" }
+    },
+    "vue-skills": {
+      "source": { "source": "github", "repo": "vuejs-ai/skills" }
+    }
+  },
+  "enabledPlugins": {
+    "cloudflare@cloudflare": true,
+    "vue-best-practices@vue-skills": true,
+    "vue-router-best-practices@vue-skills": true,
+    "vue-testing-best-practices@vue-skills": true
+  }
+}
