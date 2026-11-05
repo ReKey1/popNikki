@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, useTemplateRef } from 'vue'
+import { useRouter } from 'vue-router'
 
 import BaseButton from '@/components/BaseButton.vue'
 import BaseIconButton from '@/components/BaseIconButton.vue'
 import TimerRing from '@/components/TimerRing.vue'
 import { errorMessage, type StartResult } from '@/lib/api'
+import { leaveStep } from '@/lib/navigation'
 
 const props = defineProps<{ id: string }>()
+const router = useRouter()
 
 /** The client clock only drives the display. The server checks the real two minutes. */
 const TOTAL = 120
@@ -138,18 +141,21 @@ const buttonLabel = computed(() =>
       <h1 class="done__title">POSTED</h1>
       <p class="done__text">Plant watered. Your nikki is live in the garden.</p>
       <div class="done__actions">
-        <BaseButton variant="dark" size="md" to="/" class="done__main">
+        <BaseButton variant="dark" size="md" class="done__main" @click="leaveStep(router, '/')">
           SEE THE GARDEN
           <template #trailing>→</template>
         </BaseButton>
-        <BaseButton variant="secondary" size="sm" to="/me">My garden</BaseButton>
+        <BaseButton variant="secondary" size="sm" @click="leaveStep(router, '/me')"
+          >My garden</BaseButton
+        >
       </div>
     </div>
   </main>
 
   <main v-else class="practice">
     <header class="head">
-      <BaseIconButton tone="night" label="Quit" to="/me">✕</BaseIconButton>
+      <!-- Leaving never keeps the timer in the history, so Back can't return to it. -->
+      <BaseIconButton tone="night" label="Quit" @click="leaveStep(router, '/me')">✕</BaseIconButton>
       <h1 class="head__title mono-label">PRACTICE</h1>
       <span class="head__spacer"></span>
     </header>

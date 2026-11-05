@@ -11,6 +11,7 @@ import CameraCapture from '@/components/CameraCapture.vue'
 import { errorMessage } from '@/lib/api'
 import { formatStamp } from '@/lib/format'
 import { resizeToJpeg } from '@/lib/image'
+import { leaveStep } from '@/lib/navigation'
 
 const router = useRouter()
 const photo = ref<Blob | null>(null)
@@ -50,7 +51,9 @@ async function send(practice: boolean) {
       return
     }
     const { id } = (await res.json()) as { id: number }
-    await router.push(practice ? `/practice/${id}` : '/me')
+    // The upload page is a step, not a page: Back from what comes next skips it.
+    if (practice) await router.replace(`/practice/${id}`)
+    else await leaveStep(router, '/me')
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err)
   } finally {

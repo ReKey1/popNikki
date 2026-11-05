@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, shallowRef, useTemplateRef, watch } from 'vue'
+import { useRouter } from 'vue-router'
 
 import BaseIconButton from './BaseIconButton.vue'
 import BasePhoto from './BasePhoto.vue'
+import { goBack } from '@/lib/navigation'
 
 const emit = defineEmits<{ picked: [photo: Blob] }>()
+const router = useRouter()
 
 const video = useTemplateRef<HTMLVideoElement>('video')
 const facing = ref<'environment' | 'user'>('environment')
@@ -64,7 +67,8 @@ function pick(event: Event) {
 <template>
   <div class="camera">
     <header class="head">
-      <BaseIconButton tone="night" label="Close" to="/">✕</BaseIconButton>
+      <!-- Closing returns to where you came from, so the camera never stays in the history. -->
+      <BaseIconButton tone="night" label="Close" @click="goBack(router)">✕</BaseIconButton>
       <h1 class="head__title mono-label">NEW NIKKI</h1>
       <span class="head__spacer"></span>
     </header>

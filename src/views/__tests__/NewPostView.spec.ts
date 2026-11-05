@@ -5,10 +5,13 @@ import { stubApi } from '@/__tests__/helpers'
 import CameraCapture from '@/components/CameraCapture.vue'
 import NewPostView from '../NewPostView.vue'
 
-const push = vi.fn<(to: string) => Promise<void>>()
+const replace = vi.fn<(to: string) => Promise<void>>()
+const back = vi.fn<() => void>()
+/** The history entry before the upload page. */
+const state = { back: null as string | null }
 vi.mock('vue-router', async (importOriginal) => ({
   ...(await importOriginal<typeof import('vue-router')>()),
-  useRouter: () => ({ push }),
+  useRouter: () => ({ replace, back, options: { history: { state } } }),
 }))
 vi.mock('@/lib/image', () => ({
   resizeToJpeg: async () => new Blob(['jpeg'], { type: 'image/jpeg' }),
@@ -33,7 +36,9 @@ describe('NewPostView', () => {
   })
   afterEach(() => {
     vi.unstubAllGlobals()
-    push.mockReset()
+    replace.mockReset()
+    back.mockReset()
+    state.back = null
   })
 
   it('starts on the camera', () => {
@@ -56,10 +61,11 @@ describe('NewPostView', () => {
     expect(form.get('description')).toBe('first leaf')
     expect(form.get('photo')).toBeInstanceOf(Blob)
     expect(form.get('thumb')).toBeInstanceOf(Blob)
-    expect(push).toHaveBeenCalledWith('/practice/5')
+    // The practice takes the upload page's place in the history.
+    expect(replace).toHaveBeenCalledWith('/practice/5')
   })
 
-  it('saves to drafts and opens your profile', async () => {
+  const saveDraft = async () => {
     stubApi({ '/api/posts': Response.json({ id: 5 }, { status: 201 }) })
     const wrapper = await mountWithPhoto()
     await wrapper
@@ -67,7 +73,19 @@ describe('NewPostView', () => {
       .find((b) => b.text() === 'Save to drafts')!
       .trigger('click')
     await flushPromises()
-    expect(push).toHaveBeenCalledWith('/me')
+  }
+
+  it('saves to drafts and opens your profile in place of the upload page', async () => {
+    await saveDraft()
+    expect(replace).toHaveBeenCalledWith('/me')
+    expect(back).not.toHaveBeenCalled()
+  })
+
+  it('saves to drafts and goes back when it was opened from your profile', async () => {
+    state.back = '/me'
+    await saveDraft()
+    expect(back).toHaveBeenCalled()
+    expect(replace).not.toHaveBeenCalled()
   })
 
   it('goes back to the camera on RETAKE', async () => {
@@ -85,6 +103,6 @@ describe('NewPostView', () => {
     await wrapper.get('form').trigger('submit')
     await flushPromises()
     expect(wrapper.get('[role="alert"]').text()).toBe('Upload is too large')
-    expect(push).not.toHaveBeenCalled()
+    expect(replace).not.toHaveBeenCalled()
   })
 })
