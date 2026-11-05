@@ -7,6 +7,13 @@ const router = createRouter({
     { path: '/', name: 'home', component: HomeView },
     { path: '/claim', name: 'claim', component: () => import('../views/ClaimView.vue') },
     { path: '/new', name: 'new-post', component: () => import('../views/NewPostView.vue') },
+    { path: '/me', name: 'profile', component: () => import('../views/ProfileView.vue') },
+    {
+      path: '/practice/:id(\\d+)',
+      name: 'practice',
+      component: () => import('../views/PracticeView.vue'),
+      props: true,
+    },
     {
       path: '/plants/:id(\\d+)',
       name: 'plant',

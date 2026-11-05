@@ -1,4 +1,4 @@
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
 
 import { endSession, requireUser, startSession, type AppEnv } from '../lib/session'
@@ -9,6 +9,15 @@ const CLAIM_PATH = '/api/claim'
 const MAX_USERNAME = 20
 
 const auth = new Hono<AppEnv>()
+
+/** Reads a trimmed username from a JSON body, or returns null if it is missing or the wrong length. */
+async function parseUsername(c: Context<AppEnv>): Promise<string | null> {
+  const body = await c.req.json<{ username?: unknown }>().catch(() => ({ username: undefined }))
+  const username = typeof body.username === 'string' ? body.username.trim() : ''
+  return username.length >= 1 && username.length <= MAX_USERNAME ? username : null
+}
+
+const isUniqueError = (err: unknown) => String(err).includes('UNIQUE')
 
 // NFC entry point. Always redirects so the token leaves the address bar.
 auth.get('/tag', async (c) => {
@@ -44,11 +53,8 @@ auth.post(CLAIM_PATH, async (c) => {
   const token = getCookie(c, CLAIM_COOKIE)
   if (!token) return c.json({ error: 'Tap your tag again' }, 401)
 
-  const body = await c.req.json<{ username?: unknown }>().catch(() => ({ username: undefined }))
-  const username = typeof body.username === 'string' ? body.username.trim() : ''
-  if (username.length < 1 || username.length > MAX_USERNAME) {
-    return c.json({ error: `Use 1 to ${MAX_USERNAME} characters` }, 400)
-  }
+  const username = await parseUsername(c)
+  if (!username) return c.json({ error: `Use 1 to ${MAX_USERNAME} characters` }, 400)
 
   let user: { id: number } | null
   try {
@@ -59,7 +65,7 @@ auth.post(CLAIM_PATH, async (c) => {
       .bind(username, Date.now(), await hashToken(token))
       .first<{ id: number }>()
   } catch (err) {
-    if (String(err).includes('UNIQUE')) return c.json({ error: 'That name is taken' }, 409)
+    if (isUniqueError(err)) return c.json({ error: 'That name is taken' }, 409)
     throw err
   }
   if (!user) return c.json({ error: 'Tap your tag again' }, 401)
@@ -70,6 +76,20 @@ auth.post(CLAIM_PATH, async (c) => {
 })
 
 auth.get('/api/me', requireUser, (c) => c.json(c.var.user))
+
+auth.patch('/api/me', requireUser, async (c) => {
+  const username = await parseUsername(c)
+  if (!username) return c.json({ error: `Use 1 to ${MAX_USERNAME} characters` }, 400)
+  try {
+    await c.env.DB.prepare('UPDATE users SET username = ? WHERE id = ?')
+      .bind(username, c.var.user.id)
+      .run()
+  } catch (err) {
+    if (isUniqueError(err)) return c.json({ error: 'That name is taken' }, 409)
+    throw err
+  }
+  return c.json({ id: c.var.user.id, username })
+})
 
 auth.post('/api/logout', async (c) => {
   await endSession(c)

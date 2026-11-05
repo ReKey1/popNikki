@@ -1,46 +1,56 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref } from 'vue'
+import { onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 import BaseButton from '@/components/BaseButton.vue'
 import BaseIconButton from '@/components/BaseIconButton.vue'
+import BaseInfoNote from '@/components/BaseInfoNote.vue'
 import BasePhoto from '@/components/BasePhoto.vue'
 import BaseTextField from '@/components/BaseTextField.vue'
-import { errorMessage, type Me } from '@/lib/api'
+import CameraCapture from '@/components/CameraCapture.vue'
+import { errorMessage } from '@/lib/api'
+import { formatStamp } from '@/lib/format'
 import { resizeToJpeg } from '@/lib/image'
 
 const router = useRouter()
-const file = ref<File | null>(null)
-const preview = ref<string>()
+const photo = ref<Blob | null>(null)
+const takenAt = ref(0)
 const description = ref('')
 const error = ref('')
 const sending = ref(false)
 
-function pick(event: Event) {
-  file.value = (event.target as HTMLInputElement).files?.[0] ?? null
+const preview = ref<string>()
+
+watch(photo, (blob) => {
   if (preview.value) URL.revokeObjectURL(preview.value)
-  preview.value = file.value ? URL.createObjectURL(file.value) : undefined
-}
+  preview.value = blob ? URL.createObjectURL(blob) : undefined
+})
 onBeforeUnmount(() => {
   if (preview.value) URL.revokeObjectURL(preview.value)
 })
 
-async function send() {
-  if (!file.value) return
+function picked(blob: Blob) {
+  photo.value = blob
+  takenAt.value = Date.now()
+}
+
+/** Uploads the draft, then either starts the practice or keeps it in your drafts. */
+async function send(practice: boolean) {
+  if (!photo.value) return
   sending.value = true
   error.value = ''
   try {
     const form = new FormData()
-    form.append('photo', await resizeToJpeg(file.value, 1600), 'photo.jpg')
-    form.append('thumb', await resizeToJpeg(file.value, 400), 'thumb.jpg')
+    form.append('photo', await resizeToJpeg(photo.value, 1600), 'photo.jpg')
+    form.append('thumb', await resizeToJpeg(photo.value, 400), 'thumb.jpg')
     form.append('description', description.value)
     const res = await fetch('/api/posts', { method: 'POST', body: form })
     if (!res.ok) {
       error.value = await errorMessage(res)
       return
     }
-    const me: Me = await (await fetch('/api/me')).json()
-    await router.push(`/plants/${me.id}`)
+    const { id } = (await res.json()) as { id: number }
+    await router.push(practice ? `/practice/${id}` : '/me')
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err)
   } finally {
@@ -50,19 +60,19 @@ async function send() {
 </script>
 
 <template>
-  <form class="upload" @submit.prevent="send">
+  <CameraCapture v-if="!photo" @picked="picked" />
+
+  <form v-else class="upload" @submit.prevent="send(true)">
     <header class="head">
-      <BaseIconButton label="Back" to="/">←</BaseIconButton>
+      <BaseIconButton label="Back to camera" @click="photo = null">←</BaseIconButton>
       <h1 class="head__title">NEW NIKKI</h1>
       <span class="head__spacer"></span>
     </header>
 
     <main class="fields">
       <BasePhoto :src="preview" alt="Your photo" ratio="1/1" :radius="22" stripe="lg" class="photo">
-        <label class="photo__pick">
-          {{ file ? 'RETAKE' : 'ADD PHOTO' }}
-          <input type="file" accept="image/*" required class="photo__input" @change="pick" />
-        </label>
+        <button type="button" class="photo__retake" @click="photo = null">RETAKE</button>
+        <span class="photo__stamp">{{ formatStamp(takenAt) }}</span>
       </BasePhoto>
       <BaseTextField
         v-model="description"
@@ -71,14 +81,21 @@ async function send() {
         :maxlength="280"
         placeholder="How did practice go? How's the plant?"
       />
+      <BaseInfoNote
+        >Uploading starts a <b>2:00 practice</b>. Your nikki is shared when the timer runs
+        out.</BaseInfoNote
+      >
       <p v-if="error" class="error" role="alert">{{ error }}</p>
     </main>
 
     <div class="dock">
-      <BaseButton type="submit" :disabled="sending || !file">
-        {{ sending ? 'UPLOADING…' : 'UPLOAD & POST' }}
+      <BaseButton type="submit" :disabled="sending">
+        {{ sending ? 'UPLOADING…' : 'UPLOAD & PRACTICE' }}
         <template #trailing>→</template>
       </BaseButton>
+      <BaseButton variant="secondary" size="sm" :disabled="sending" @click="send(false)"
+        >Save to drafts</BaseButton
+      >
     </div>
   </form>
 </template>
@@ -114,19 +131,13 @@ async function send() {
   padding: 0 20px;
 }
 
-.photo {
-  align-items: center;
-  justify-content: center;
-}
-
-.photo__pick {
+.photo__retake {
   position: absolute;
   top: 12px;
   right: 12px;
-  display: flex;
-  align-items: center;
   height: 36px;
   padding: 0 14px;
+  border: none;
   border-radius: var(--radius-pill);
   background: var(--ink);
   color: var(--paper);
@@ -135,17 +146,15 @@ async function send() {
   cursor: pointer;
 }
 
-.photo__pick:focus-within {
-  outline: 2px solid var(--orange);
-  outline-offset: 2px;
-}
-
-/* Visually hidden but still focusable and announced. */
-.photo__input {
+.photo__stamp {
   position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
+  left: 14px;
+  bottom: 12px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: var(--paper);
+  font: var(--type-mono-meta);
+  color: var(--ink-3);
 }
 
 .error {
@@ -157,6 +166,9 @@ async function send() {
 .dock {
   position: sticky;
   bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   margin-top: 8px;
   padding: 16px 20px 28px;
   background: var(--paper);

@@ -75,7 +75,7 @@ The **repo is public.** Never commit tag tokens, tag URLs, provisioning output (
 - **Referrer policy:** `Referrer-Policy: no-referrer` is set by `hono/secure-headers` in `server/index.ts`.
 - **Sessions** use server-set `HttpOnly; Secure; SameSite=Lax` cookies (`hono/cookie`). Never use `localStorage` for login, because Safari clears it.
 - **R2 stays private.** Every photo and audio file goes through the Worker, which checks the session first. Audio responses must support HTTP Range requests for Safari.
-- **The 120-second dance minimum is enforced on the server** against `music_started_at`. The client timer is not trusted.
+- **The 120-second dance minimum is enforced on the server** against `music_started_at`. The client timer is not trusted. The one exception, which the owner chose, is that when the `tracks` table is empty, `POST /api/posts/:id/start` publishes the draft immediately. That decision is made on the server.
 - **Photos:** resize and re-encode in the browser to strip EXIF and GPS data (about 1600 px, plus a thumbnail of about 400 px). Validate type and size on the server too.
 - **Update badges** are tracked per plant in `plant_views` and cleared only when the viewer opens that plant.
 - **Music licensing:** never add a commercial recording to the repo or to R2 without the owner's confirmed permission. Tracks store only a `title` and an `r2_key`, so keep the record of each song's permission outside the repo.

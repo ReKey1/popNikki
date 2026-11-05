@@ -1,7 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { stubApi, stubDialog, testRouter } from '@/__tests__/helpers'
+import { stubApi, testRouter } from '@/__tests__/helpers'
 import HomeView from '../HomeView.vue'
 
 const mountHome = () =>
@@ -19,7 +19,6 @@ const plant = (id: number, username: string, extra = {}) => ({
 })
 
 describe('HomeView', () => {
-  beforeAll(stubDialog)
   afterEach(() => {
     vi.unstubAllGlobals()
     document.body.innerHTML = ''
@@ -63,24 +62,18 @@ describe('HomeView', () => {
     expect(wrapper.get('a.fab').attributes('href')).toBe('/new')
   })
 
-  it('logs out from the settings sheet', async () => {
-    const fetch = stubApi({
+  it('links to your profile instead of a settings sheet', async () => {
+    stubApi({
       '/api/me': Response.json({ id: 1, username: 'nikki' }),
       '/api/plants': Response.json([plant(1, 'nikki')]),
-      '/api/logout': new Response(null, { status: 204 }),
     })
     const wrapper = mountHome()
     await flushPromises()
 
-    await wrapper.get('button[aria-label="Settings"]').trigger('click')
-    expect(wrapper.get('dialog').attributes('open')).toBe('')
-    expect(wrapper.get('dialog a').attributes('href')).toBe('/plants/1')
-
-    const logOut = wrapper.findAll('dialog button').find((b) => b.text() === 'Log out')!
-    await logOut.trigger('click')
-    await flushPromises()
-
-    expect(fetch).toHaveBeenCalledWith('/api/logout', { method: 'POST' })
-    expect(wrapper.text()).toContain("Tap your plant's tag to log in.")
+    const profile = wrapper.get('a[aria-label="My profile"]')
+    expect(profile.attributes('href')).toBe('/me')
+    expect(profile.text()).toBe('N')
+    expect(wrapper.find('button[aria-label="Settings"]').exists()).toBe(false)
+    expect(wrapper.find('dialog').exists()).toBe(false)
   })
 })

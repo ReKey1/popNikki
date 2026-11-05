@@ -18,6 +18,10 @@ export type Post = {
   my_reaction: string | null
 }
 export type PlantPosts = { owner: Me; posts: Post[] }
+/** A post that hasn't been danced out yet. */
+export type Draft = { id: number; description: string; created_at: number }
+/** The answer to starting the music: a track, or published at once when there is none. */
+export type StartResult = { track: { id: number; title: string } } | { published: true }
 
 /** Reads the `error` message from a failed API response. */
 export async function errorMessage(res: Response): Promise<string> {

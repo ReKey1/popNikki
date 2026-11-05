@@ -3,11 +3,8 @@ import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 
 import BaseAvatar from '@/components/BaseAvatar.vue'
-import BaseButton from '@/components/BaseButton.vue'
 import BaseFab from '@/components/BaseFab.vue'
-import BaseIconButton from '@/components/BaseIconButton.vue'
 import BasePill from '@/components/BasePill.vue'
-import BaseSheet from '@/components/BaseSheet.vue'
 import BaseWordmark from '@/components/BaseWordmark.vue'
 import NikkiTile from '@/components/NikkiTile.vue'
 import type { Me, Plant } from '@/lib/api'
@@ -16,15 +13,8 @@ import { dayNumber, timeAgo } from '@/lib/format'
 const loading = ref(true)
 const me = ref<Me | null>(null)
 const plants = ref<Plant[]>([])
-const settingsOpen = ref(false)
 
 const fresh = computed(() => plants.value.filter((p) => p.unseen).length)
-const mine = computed(() => plants.value.find((p) => p.id === me.value?.id))
-
-const meta = (plant: Plant) =>
-  plant.first_published_at
-    ? `DAY ${dayNumber(plant.first_published_at)} · ${plant.post_count} NIKKI`
-    : `${plant.post_count} NIKKI`
 
 onMounted(async () => {
   const res = await fetch('/api/me')
@@ -34,13 +24,6 @@ onMounted(async () => {
   }
   loading.value = false
 })
-
-async function logOut() {
-  await fetch('/api/logout', { method: 'POST' })
-  settingsOpen.value = false
-  me.value = null
-  plants.value = []
-}
 </script>
 
 <template>
@@ -55,9 +38,9 @@ async function logOut() {
   <template v-else>
     <header class="head">
       <h1 class="head__mark"><BaseWordmark animated /></h1>
-      <BaseIconButton tone="outline" label="Settings" @click="settingsOpen = true"
-        >⚙</BaseIconButton
-      >
+      <RouterLink to="/me" aria-label="My profile" class="head__me">
+        <BaseAvatar :name="me.username" tone="orange" :size="44" />
+      </RouterLink>
     </header>
 
     <main>
@@ -88,18 +71,6 @@ async function logOut() {
 
       <div class="fab-dock"><BaseFab to="/new">NEW NIKKI</BaseFab></div>
     </main>
-
-    <BaseSheet v-model:open="settingsOpen" title="SETTINGS">
-      <RouterLink :to="`/plants/${me.id}`" class="mine">
-        <BaseAvatar :name="me.username" tone="orange" :size="52" />
-        <span class="mine__text">
-          <span class="mine__title">My garden</span>
-          <span class="mine__meta">{{ mine ? meta(mine) : '' }}</span>
-        </span>
-        <span aria-hidden="true">→</span>
-      </RouterLink>
-      <BaseButton variant="secondary" size="md" @click="logOut">Log out</BaseButton>
-    </BaseSheet>
   </template>
 </template>
 
@@ -194,31 +165,8 @@ async function logOut() {
   padding-bottom: 24px;
 }
 
-.mine,
-.mine:hover {
+.head__me {
   display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 14px;
-  border-radius: 18px;
-  background: var(--moss-mist);
-  color: var(--ink);
-  text-decoration: none;
-}
-
-.mine__text {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
-
-.mine__title {
-  font: 600 16px var(--font-body);
-}
-
-.mine__meta {
-  font: var(--type-mono-note);
-  letter-spacing: var(--tracking-tight);
-  color: var(--moss);
+  border-radius: 50%;
 }
 </style>

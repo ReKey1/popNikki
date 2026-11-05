@@ -149,4 +149,46 @@ describe('auth', () => {
       expect((await me(cookie)).status).toBe(401)
     })
   })
+  describe('PATCH /api/me', () => {
+    const rename = (cookie: string, username: unknown) =>
+      request('/api/me', {
+        method: 'PATCH',
+        headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username }),
+      })
+
+    it('changes the username', async () => {
+      const { id, token } = await addUser('nikki')
+      const cookie = await logIn(token)
+      const res = await rename(cookie, '  bloom  ')
+      expect(res.status).toBe(200)
+      expect(await res.json()).toEqual({ id, username: 'bloom' })
+      expect(await (await me(cookie)).json()).toEqual({ id, username: 'bloom' })
+    })
+
+    it('allows a case-only change of your own name', async () => {
+      const { token } = await addUser('nikki')
+      expect((await rename(await logIn(token), 'Nikki')).status).toBe(200)
+    })
+
+    it("rejects someone else's name, ignoring case", async () => {
+      await addUser('Bob')
+      const { token } = await addUser('nikki')
+      const res = await rename(await logIn(token), 'bob')
+      expect(res.status).toBe(409)
+      expect(await res.json()).toEqual({ error: 'That name is taken' })
+    })
+
+    it('rejects an empty or too long name', async () => {
+      const { token } = await addUser('nikki')
+      const cookie = await logIn(token)
+      for (const name of ['  ', 'x'.repeat(21), 42]) {
+        expect((await rename(cookie, name)).status).toBe(400)
+      }
+    })
+
+    it('needs a session', async () => {
+      expect((await rename('', 'bloom')).status).toBe(401)
+    })
+  })
 })
