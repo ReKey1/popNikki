@@ -4,8 +4,20 @@ export type Plant = {
   username: string
   post_id: number | null
   published_at: number | null
+  post_count: number
+  first_published_at: number | null
+  /** The newest nikki is newer than the viewer's last visit. */
+  unseen: boolean
 }
-export type Post = { id: number; description: string; published_at: number }
+export type Post = {
+  id: number
+  description: string
+  published_at: number
+  /** Count per emoji. */
+  reactions: Record<string, number>
+  my_reaction: string | null
+}
+export type PlantPosts = { owner: Me; posts: Post[] }
 
 /** Reads the `error` message from a failed API response. */
 export async function errorMessage(res: Response): Promise<string> {
@@ -13,4 +25,14 @@ export async function errorMessage(res: Response): Promise<string> {
   return body?.error ?? `Something went wrong (${res.status})`
 }
 
-export const formatDate = (ms: number) => new Date(ms).toLocaleString()
+/** Sets (or, with `null`, removes) the viewer's reaction on a post. */
+export function setReaction(postId: number, emoji: string | null): Promise<Response> {
+  const url = `/api/posts/${postId}/reaction`
+  return emoji
+    ? fetch(url, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emoji }),
+      })
+    : fetch(url, { method: 'DELETE' })
+}

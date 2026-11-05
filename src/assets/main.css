@@ -1,0 +1,36 @@
+@import './tokens.css';
+@import './motion.css';
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--ink);
+}
+
+a:hover {
+  color: var(--moss);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--ink-5);
+}
+
+/* Shared mono label: UPPERCASE meta text such as "DAY 23 · 9 NIKKI". */
+.mono-label {
+  font: var(--type-mono-label);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}

@@ -21,6 +21,12 @@
     "format:check": "prettier --check --experimental-cli ."
   },
   "dependencies": {
+    "@fontsource/archivo": "^5.3.0",
+    "@fontsource/bungee": "^5.3.0",
+    "@fontsource/dela-gothic-one": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
+    "@fontsource/rubik-spray-paint": "^5.3.0",
+    "@fontsource/zen-kaku-gothic-new": "^5.3.1",
     "hono": "^4.13.16",
     "vue": "^3.5.42",
     "vue-router": "^5.3.1"

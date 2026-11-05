@@ -4,7 +4,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import ClaimView from '../ClaimView.vue'
 
 const push = vi.fn<(to: string) => Promise<void>>()
-vi.mock('vue-router', () => ({ useRouter: () => ({ push }) }))
+vi.mock('vue-router', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('vue-router')>()),
+  useRouter: () => ({ push }),
+}))
 
 describe('ClaimView', () => {
   afterEach(() => {

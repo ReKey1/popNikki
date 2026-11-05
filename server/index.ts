@@ -5,6 +5,7 @@ import { secureHeaders } from 'hono/secure-headers'
 import type { AppEnv } from './lib/session'
 import auth from './routes/auth'
 import posts from './routes/posts'
+import reactions from './routes/reactions'
 
 const app = new Hono<AppEnv>()
 
@@ -13,5 +14,6 @@ app.use('/api/*', csrf())
 
 app.route('/', auth)
 app.route('/', posts)
+app.route('/', reactions)
 
 export default app

@@ -1,26 +1,20 @@
 <script setup lang="ts">
-import { RouterLink, RouterView } from 'vue-router'
+import { RouterView } from 'vue-router'
 </script>
 
 <template>
-  <header>
-    <RouterLink to="/">popNikki</RouterLink>
-  </header>
-  <main>
+  <div class="app">
     <RouterView />
-  </main>
+  </div>
 </template>
 
-<style>
-body {
-  font-family: system-ui, sans-serif;
+<style scoped>
+/* A phone-width column: the design is drawn at 390pt. */
+.app {
+  position: relative;
+  max-width: 430px;
+  min-height: 100dvh;
   margin: 0 auto;
-  max-width: 40rem;
-  padding: 0 1rem;
-}
-
-img {
-  max-width: 100%;
-  height: auto;
+  background: var(--paper);
 }
 </style>

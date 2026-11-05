@@ -31,6 +31,11 @@ describe('posts', () => {
   it('needs a session for every route', async () => {
     const paths = ['/api/plants', `/api/users/${userId}/posts`, '/api/posts/1/photo']
     for (const path of paths) expect((await request(path)).status).toBe(401)
+    const seen = await request(`/api/users/${userId}/seen`, {
+      method: 'POST',
+      headers: { Origin: 'http://localhost' },
+    })
+    expect(seen.status).toBe(401)
     expect((await upload('', { photo: jpeg(), thumb: jpeg() })).status).toBe(401)
   })
 
@@ -107,9 +112,55 @@ describe('posts', () => {
 
     const res = await request('/api/plants', { headers: { Cookie: cookie } })
     expect(await res.json()).toEqual([
-      { id: userId, username: 'nikki', post_id: newest.id, published_at: expect.any(Number) },
-      { id: bob.id, username: 'bob', post_id: null, published_at: null },
+      {
+        id: userId,
+        username: 'nikki',
+        post_id: newest.id,
+        published_at: expect.any(Number),
+        post_count: 2,
+        first_published_at: expect.any(Number),
+        unseen: false, // never for your own plant
+      },
+      {
+        id: bob.id,
+        username: 'bob',
+        post_id: null,
+        published_at: null,
+        post_count: 0,
+        first_published_at: null,
+        unseen: false,
+      },
     ])
+  })
+
+  it('marks a plant unseen until the viewer opens it', async () => {
+    const bob = await addUser('bob')
+    const bobCookie = await logIn(bob.token)
+    const unseen = async () => {
+      const res = await request('/api/plants', { headers: { Cookie: bobCookie } })
+      const plants = await res.json<{ id: number; unseen: boolean }[]>()
+      return plants.find((p) => p.id === userId)!.unseen
+    }
+    const seen = (id: number) =>
+      request(`/api/users/${id}/seen`, {
+        method: 'POST',
+        headers: { Cookie: bobCookie, Origin: 'http://localhost' },
+      })
+
+    await upload(cookie, { photo: jpeg(), thumb: jpeg() })
+    expect(await unseen()).toBe(true)
+
+    expect((await seen(userId)).status).toBe(204)
+    expect(await unseen()).toBe(false)
+
+    // Only a newer post brings the badge back.
+    await db
+      .prepare('UPDATE posts SET published_at = ? WHERE user_id = ?')
+      .bind(Date.now() + 60_000, userId)
+      .run()
+    expect(await unseen()).toBe(true)
+
+    expect((await seen(999)).status).toBe(404)
   })
 
   it("lists a user's posts, newest first", async () => {

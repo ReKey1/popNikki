@@ -19,7 +19,7 @@ async function count(table: string): Promise<number> {
 describe('D1 schema', () => {
   beforeEach(async () => {
     await db.batch(
-      ['plant_views', 'sessions', 'posts', 'tracks', 'users'].map((t) =>
+      ['reactions', 'plant_views', 'sessions', 'posts', 'tracks', 'users'].map((t) =>
         db.prepare(`DELETE FROM ${t}`),
       ),
     )
@@ -30,7 +30,7 @@ describe('D1 schema', () => {
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
       .all<{ name: string }>()
     expect(results.map((r) => r.name)).toEqual(
-      expect.arrayContaining(['plant_views', 'posts', 'sessions', 'tracks', 'users']),
+      expect.arrayContaining(['plant_views', 'posts', 'reactions', 'sessions', 'tracks', 'users']),
     )
   })
 
@@ -105,6 +105,32 @@ describe('D1 schema', () => {
       .prepare('SELECT last_viewed_at FROM plant_views')
       .all<{ last_viewed_at: number }>()
     expect(results).toEqual([{ last_viewed_at: 2000 }])
+  })
+
+  it('keeps one reaction per member per post and deletes it with the post or member', async () => {
+    const alice = await addUser('hash-a', 'alice')
+    const bob = await addUser('hash-b', 'bob')
+    const now = Date.now()
+    const post = await db
+      .prepare(
+        'INSERT INTO posts (user_id, created_at, published_at) VALUES (?, ?, ?) RETURNING id',
+      )
+      .bind(alice, now, now)
+      .first<{ id: number }>()
+    const react = (userId: number, emoji: string) =>
+      db
+        .prepare('INSERT INTO reactions (post_id, user_id, emoji, created_at) VALUES (?, ?, ?, ?)')
+        .bind(post!.id, userId, emoji, now)
+        .run()
+
+    await react(alice, '🔥')
+    await react(bob, '💧')
+    await expect(react(bob, '🌱')).rejects.toThrow(/UNIQUE/)
+
+    await db.prepare('DELETE FROM users WHERE id = ?').bind(bob).run()
+    expect(await count('reactions')).toBe(1)
+    await db.prepare('DELETE FROM posts WHERE id = ?').bind(post!.id).run()
+    expect(await count('reactions')).toBe(0)
   })
 
   it('finds the newest published post per user through the index', async () => {

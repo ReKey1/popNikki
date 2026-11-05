@@ -8,19 +8,41 @@ export const LIMITS = { photo: 3 * MB, thumb: 512 * 1024, description: 1000 }
 
 const posts = new Hono<AppEnv>()
 
-// One row per plant (claimed user), with their newest published post.
+// One row per plant (claimed user): their newest published post, how many they have published
+// since the first one, and whether that newest post is unseen by the viewer.
 posts.get('/api/plants', requireUser, async (c) => {
   const { results } = await c.env.DB.prepare(
-    `SELECT u.id, u.username, p.id AS post_id, p.published_at
+    `SELECT u.id, u.username, p.id AS post_id, p.published_at,
+       (SELECT COUNT(*) FROM posts WHERE user_id = u.id AND published_at IS NOT NULL) AS post_count,
+       (SELECT MIN(published_at) FROM posts WHERE user_id = u.id AND published_at IS NOT NULL)
+         AS first_published_at,
+       COALESCE(u.id != ?1 AND p.published_at > COALESCE(v.last_viewed_at, 0), 0) AS unseen
      FROM users u
      LEFT JOIN posts p ON p.id = (
        SELECT id FROM posts
        WHERE user_id = u.id AND published_at IS NOT NULL
        ORDER BY published_at DESC LIMIT 1)
+     LEFT JOIN plant_views v ON v.viewer_id = ?1 AND v.owner_id = u.id
      WHERE u.username IS NOT NULL AND u.revoked_at IS NULL
      ORDER BY p.published_at IS NULL, p.published_at DESC, u.username`,
-  ).all()
-  return c.json(results)
+  )
+    .bind(c.var.user.id)
+    .all<{ unseen: number }>()
+  return c.json(results.map((plant) => ({ ...plant, unseen: plant.unseen === 1 })))
+})
+
+// Opening a plant clears its update badge for the viewer.
+posts.post('/api/users/:id{[0-9]+}/seen', requireUser, async (c) => {
+  const { meta } = await c.env.DB.prepare(
+    `INSERT INTO plant_views (viewer_id, owner_id, last_viewed_at)
+     SELECT ?1, id, ?3 FROM users
+     WHERE id = ?2 AND username IS NOT NULL AND revoked_at IS NULL
+     ON CONFLICT (viewer_id, owner_id) DO UPDATE SET last_viewed_at = excluded.last_viewed_at`,
+  )
+    .bind(c.var.user.id, Number(c.req.param('id')), Date.now())
+    .run()
+  if (meta.changes === 0) return c.notFound()
+  return c.body(null, 204)
 })
 
 posts.get('/api/users/:id{[0-9]+}/posts', requireUser, async (c) => {
@@ -31,14 +53,40 @@ posts.get('/api/users/:id{[0-9]+}/posts', requireUser, async (c) => {
     .first<{ id: number; username: string }>()
   if (!owner) return c.notFound()
 
-  const { results } = await c.env.DB.prepare(
-    `SELECT id, description, published_at FROM posts
-     WHERE user_id = ? AND published_at IS NOT NULL
-     ORDER BY published_at DESC`,
-  )
-    .bind(owner.id)
-    .all()
-  return c.json({ owner, posts: results })
+  const [list, counts] = await c.env.DB.batch([
+    c.env.DB.prepare(
+      `SELECT id, description, published_at FROM posts
+       WHERE user_id = ? AND published_at IS NOT NULL
+       ORDER BY published_at DESC`,
+    ).bind(owner.id),
+    c.env.DB.prepare(
+      `SELECT r.post_id, r.emoji, COUNT(*) AS n, MAX(r.user_id = ?2) AS mine
+       FROM reactions r JOIN posts p ON p.id = r.post_id
+       WHERE p.user_id = ?1 AND p.published_at IS NOT NULL
+       GROUP BY r.post_id, r.emoji`,
+    ).bind(owner.id, c.var.user.id),
+  ])
+
+  const byPost = new Map<
+    number,
+    { reactions: Record<string, number>; my_reaction: string | null }
+  >()
+  for (const row of counts!.results as {
+    post_id: number
+    emoji: string
+    n: number
+    mine: number
+  }[]) {
+    const entry = byPost.get(row.post_id) ?? { reactions: {}, my_reaction: null }
+    entry.reactions[row.emoji] = row.n
+    if (row.mine) entry.my_reaction = row.emoji
+    byPost.set(row.post_id, entry)
+  }
+  const result = (list!.results as { id: number }[]).map((post) => ({
+    ...post,
+    ...(byPost.get(post.id) ?? { reactions: {}, my_reaction: null }),
+  }))
+  return c.json({ owner, posts: result })
 })
 
 function isJpeg(value: unknown, maxSize: number): value is File {

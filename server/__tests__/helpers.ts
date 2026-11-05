@@ -10,7 +10,7 @@ export const request = (path: string, init?: RequestInit) => app.request(path, i
 
 export async function resetDb(): Promise<void> {
   await db.batch(
-    ['plant_views', 'sessions', 'posts', 'tracks', 'users'].map((t) =>
+    ['reactions', 'plant_views', 'sessions', 'posts', 'tracks', 'users'].map((t) =>
       db.prepare(`DELETE FROM ${t}`),
     ),
   )
