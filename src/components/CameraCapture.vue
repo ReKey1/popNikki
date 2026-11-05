@@ -153,7 +153,7 @@ function pick(event: Event) {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 320px;
+  min-height: clamp(200px, 45dvh, 320px);
   margin: 4px 16px 0;
   border-radius: 28px;
   overflow: hidden;
@@ -195,8 +195,8 @@ function pick(event: Event) {
 
 .finder__circle {
   position: relative;
-  width: 230px;
-  height: 230px;
+  width: min(230px, 60vw, 32dvh);
+  aspect-ratio: 1;
   border: 1.5px dashed rgb(244 241 234 / 40%);
   border-radius: 50%;
 }
@@ -256,7 +256,7 @@ function pick(event: Event) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 36px 40px;
+  padding: 12px 36px max(40px, env(safe-area-inset-bottom));
 }
 
 .library {

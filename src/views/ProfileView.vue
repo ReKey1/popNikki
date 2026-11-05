@@ -185,8 +185,8 @@ async function loggedOut() {
 .hero__ring {
   position: absolute;
   top: 0;
-  width: 200px;
-  height: 200px;
+  width: min(200px, 55vw);
+  aspect-ratio: 1;
   border: 1.5px solid var(--moss-ring);
   border-radius: 50%;
 }

@@ -25,16 +25,15 @@ const degrees = computed(() => Math.round(((total - remaining) / total) * 360))
 </script>
 
 <template>
-  <div class="ring" :style="{ width: `${size}px`, height: `${size}px` }">
+  <!-- size is the largest it gets: it shrinks on narrow or short screens. -->
+  <div class="ring" :style="{ width: `min(${size}px, 70vw, 42dvh)` }">
     <div v-if="running" class="ring__beat" aria-hidden="true"></div>
     <div
       class="ring__fill"
       :style="{ background: `conic-gradient(var(--orange) ${degrees}deg, var(--night-3) 0deg)` }"
     ></div>
     <div class="ring__face">
-      <span class="ring__clock" role="timer" :style="{ fontSize: `${Math.round(size * 0.246)}px` }">
-        {{ clock }}
-      </span>
+      <span class="ring__clock" role="timer">{{ clock }}</span>
       <span class="ring__caption">{{ caption }}</span>
     </div>
   </div>
@@ -43,6 +42,8 @@ const degrees = computed(() => Math.round(((total - remaining) / total) * 360))
 <style scoped>
 .ring {
   position: relative;
+  container-type: inline-size;
+  aspect-ratio: 1;
 }
 
 .ring__beat {
@@ -72,6 +73,8 @@ const degrees = computed(() => Math.round(((total - remaining) / total) * 360))
 }
 
 .ring__clock {
+  /* Scales with the ring's width. */
+  font-size: 24.6cqi;
   font-family: var(--font-sign);
   line-height: 1;
   color: var(--on-night);
@@ -80,6 +83,8 @@ const degrees = computed(() => Math.round(((total - remaining) / total) * 360))
 .ring__caption {
   font: var(--type-mono-meta);
   letter-spacing: var(--tracking-wide);
+  max-width: 80%;
   color: var(--on-night-3);
+  text-align: center;
 }
 </style>

@@ -63,6 +63,9 @@ async function mountPlant(
 
 const pills = (wrapper: Awaited<ReturnType<typeof mountPlant>>['wrapper']) =>
   wrapper.findAll('.pill').map((p) => p.text())
+/** The links of the history rows marked as the nikki shown large. */
+const current = (wrapper: Awaited<ReturnType<typeof mountPlant>>['wrapper']) =>
+  wrapper.findAll('.row[aria-current="true"]').map((row) => row.attributes('href'))
 const button = (wrapper: Awaited<ReturnType<typeof mountPlant>>['wrapper'], emoji: string) =>
   wrapper.findAll('.bar button').find((b) => b.text() === emoji)!
 
@@ -73,7 +76,7 @@ describe('PlantView', () => {
     document.body.innerHTML = ''
   })
 
-  it('shows the newest nikki large, the rest as history, and clears the badge', async () => {
+  it('shows the newest nikki large, every nikki as history, and clears the badge', async () => {
     const { fetch, wrapper } = await mountPlant()
 
     expect(wrapper.get('h1').text()).toBe('けんじ')
@@ -82,12 +85,12 @@ describe('PlantView', () => {
     expect(wrapper.text()).toContain('Second leaf!')
     expect(pills(wrapper)).toEqual(['💧 5', '🔥 3'])
 
-    expect(wrapper.text()).toContain('PREVIOUS NIKKI')
+    expect(wrapper.text()).toContain('ALL NIKKI')
     const history = wrapper.findAll('.row')
-    expect(history).toHaveLength(1)
-    expect(history[0]!.attributes('href')).toBe('/plants/2/4')
-    expect(history[0]!.text()).toContain('DAY 1 ·')
-    expect(history[0]!.text()).toContain('🌱 6')
+    expect(history.map((row) => row.attributes('href'))).toEqual(['/plants/2/9', '/plants/2/4'])
+    expect(history[1]!.text()).toContain('DAY 1 ·')
+    expect(history[1]!.text()).toContain('🌱 6')
+    expect(current(wrapper)).toEqual(['/plants/2/9'])
 
     expect(fetch).toHaveBeenCalledWith('/api/users/2/seen', { method: 'POST' })
   })
@@ -171,16 +174,14 @@ describe('PlantView', () => {
     expect(wrapper.get('.featured img').attributes('src')).toBe('/api/posts/4/photo')
     expect(wrapper.text()).toContain('Seed in.')
     expect(pills(wrapper)).toEqual(['🌱 6'])
-    expect(wrapper.text()).toContain('OTHER NIKKI')
-    const rows = wrapper.findAll('.row')
-    expect(rows).toHaveLength(1)
-    expect(rows[0]!.attributes('href')).toBe('/plants/2/9')
+    expect(wrapper.findAll('.row')).toHaveLength(2)
+    expect(current(wrapper)).toEqual(['/plants/2/4'])
   })
 
   it('falls back to the newest nikki for an unknown post id', async () => {
     const { wrapper } = await mountPlant({}, { postId: '123' })
     expect(wrapper.get('.featured img').attributes('src')).toBe('/api/posts/9/photo')
-    expect(wrapper.text()).toContain('PREVIOUS NIKKI')
+    expect(current(wrapper)).toEqual(['/plants/2/9'])
   })
 
   it('refreshes while open and clears the badge again for a new nikki', async () => {
@@ -244,6 +245,9 @@ describe('PlantView', () => {
     const dialog = wrapper.get('dialog')
     expect(dialog.attributes('open')).toBeDefined()
     expect(dialog.findAll('li').map((li) => li.text())).toEqual(['Nnikki💧', 'Bbob🔥'])
+    // The reactions sheet can be dragged taller, so it shows its grip.
+    expect(dialog.attributes('data-snap')).toBe('half')
+    expect(dialog.find('.sheet__grip').exists()).toBe(true)
   })
 
   it('opens who reacted from the keyboard too', async () => {
@@ -279,10 +283,11 @@ describe('PlantView', () => {
     const { wrapper } = await mountPlant({}, { router })
 
     // Switching posts replaces the history entry instead of adding one.
-    await wrapper.get('a.row').trigger('click')
+    const other = () => wrapper.get('a.row:not([aria-current])')
+    await other().trigger('click')
     await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/plants/2/4'))
     await wrapper.setProps({ postId: '4' })
-    await wrapper.get('a.row').trigger('click')
+    await other().trigger('click')
     await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/plants/2/9'))
 
     await wrapper.get('button[aria-label="Back"]').trigger('click')

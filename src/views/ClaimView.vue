@@ -67,7 +67,7 @@ async function claim() {
   display: flex;
   flex-direction: column;
   min-height: 100dvh;
-  padding: 28px 28px 40px;
+  padding: 28px 28px max(40px, env(safe-area-inset-bottom));
 }
 
 .login__top {
@@ -84,7 +84,7 @@ async function claim() {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 360px;
+  min-height: clamp(240px, 45dvh, 360px);
 }
 
 .login__ring,
@@ -96,15 +96,15 @@ async function claim() {
 }
 
 .login__ring {
-  width: 300px;
-  height: 300px;
+  width: min(300px, 78vw, 42dvh);
+  aspect-ratio: 1;
   border: 1.5px solid var(--moss-ring);
   transform: translate(-50%, -62%);
 }
 
 .login__disc {
-  width: 210px;
-  height: 210px;
+  width: min(210px, 55vw, 29dvh);
+  aspect-ratio: 1;
   background: var(--moss-mist);
   transform: translate(-50%, -72%);
 }

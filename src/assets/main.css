@@ -7,6 +7,15 @@
   box-sizing: border-box;
 }
 
+/* Pages and panels still scroll, but no scroll bar ever shows. */
+* {
+  scrollbar-width: none;
+}
+
+::-webkit-scrollbar {
+  display: none;
+}
+
 body {
   margin: 0;
   background: var(--paper);

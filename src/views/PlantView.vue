@@ -32,7 +32,6 @@ const newest = computed(() => data.value?.posts[0])
 const featured = computed(
   () => data.value?.posts.find((p) => String(p.id) === props.postId) ?? newest.value,
 )
-const others = computed(() => data.value?.posts.filter((p) => p !== featured.value) ?? [])
 const firstAt = computed(() => data.value?.posts[data.value.posts.length - 1]?.published_at)
 const day = (at: number) => dayNumber(firstAt.value ?? at, at)
 const counts = (post: Post) => Object.entries(post.reactions).sort((a, b) => b[1] - a[1])
@@ -155,14 +154,13 @@ onLongPress(countsRow, showReactors)
         <p v-if="featured.description" class="featured__text">{{ featured.description }}</p>
       </article>
 
-      <template v-if="others.length">
-        <BaseSectionRule class="rule">{{
-          featured === newest ? 'PREVIOUS NIKKI' : 'OTHER NIKKI'
-        }}</BaseSectionRule>
+      <template v-if="data.posts.length">
+        <BaseSectionRule class="rule">ALL NIKKI</BaseSectionRule>
         <div class="history">
           <HistoryRow
-            v-for="post in others"
+            v-for="post in data.posts"
             :key="post.id"
+            :current="post === featured"
             :to="{ path: `/plants/${data.owner.id}/${post.id}`, replace: true }"
             :day="day(post.published_at)"
             :date="formatShortDate(post.published_at)"
@@ -174,7 +172,7 @@ onLongPress(countsRow, showReactors)
       </template>
       <p v-if="featured" class="seed">· DAY 1 — SEED PLANTED ·</p>
 
-      <BaseSheet v-model:open="reactorsOpen" title="Reactions">
+      <BaseSheet v-model:open="reactorsOpen" title="Reactions" draggable>
         <ul class="reactors">
           <li v-for="r in reactors" :key="r.username" class="reactors__row">
             <BaseAvatar :name="r.username" :size="36" />
