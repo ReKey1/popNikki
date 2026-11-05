@@ -48,3 +48,9 @@ __screenshots__/
 # Tag provisioning output (contains login tokens), never commit
 secrets/
 tags/
+
+# Personal Claude Code settings
+.claude/settings.local.json
+
+# Playwright MCP screenshots and logs
+.playwright-mcp/

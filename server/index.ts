@@ -1,10 +1,21 @@
 import { Hono } from 'hono'
+import { csrf } from 'hono/csrf'
 import { secureHeaders } from 'hono/secure-headers'
 
-const app = new Hono<{ Bindings: Env }>()
+import type { AppEnv } from './lib/session'
+import auth from './routes/auth'
+import posts from './routes/posts'
+import reactions from './routes/reactions'
+import tracks from './routes/tracks'
+
+const app = new Hono<AppEnv>()
 
 app.use(secureHeaders({ referrerPolicy: 'no-referrer' }))
+app.use('/api/*', csrf())
 
-app.get('/api/', (c) => c.json({ name: 'Cloudflare' }))
+app.route('/', auth)
+app.route('/', posts)
+app.route('/', reactions)
+app.route('/', tracks)
 
 export default app

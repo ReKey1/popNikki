@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A private site for a dance team. Scanning a plant pot's NFC tag logs the user in. Users post plant growth photos, and each post is published only after a two-minute dance with music. [plant-platform-plan.md](plant-platform-plan.md) is the design handoff: requirements, proposed schema, login and dance flows, and open decisions. Read the relevant section before building a feature.
 
-Hosting is **Cloudflare**, which has been confirmed. Remaining open decisions are in the plan, and the domain must be fixed before any tag is locked.
+Hosting is **Cloudflare**, which has been confirmed. The domain is `pop-nikki.party`. Remaining open decisions are in the plan.
 
 ## Commands
 
@@ -26,6 +26,21 @@ Hosting is **Cloudflare**, which has been confirmed. Remaining open decisions ar
 
 CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs lint (without fixing), the format check, type-check, tests and the build on every push and PR. **Run `npm run lint`, `npm run type-check` and `npm test` before pushing.**
 
+## Branches
+
+- **`dev`** is the default branch. All work and Dependabot updates land here, either directly or through feature-branch PRs into `dev`.
+- **`prod`** is the released code. A GitHub ruleset blocks direct pushes, force-pushes and deletion, so it changes only through a PR from `dev` with a passing `check` CI job.
+- Never push to or merge into `prod` without the owner's go-ahead.
+
+## Cloudflare resources
+
+- Account login is done with `wrangler login`.
+- **D1:** the database is `popnikki` (binding `DB`, location hint APAC). The schema is in `migrations/` and is applied both locally and remotely.
+- **R2:** the bucket is `popnikki-files` (binding `FILES`, location hint APAC). It is created, and public `r2.dev` access is disabled. Keep it that way.
+- Local dev and tests use local simulations of both, so they don't need the real resources.
+- **Domain:** `pop-nikki.party`, attached as a Worker custom domain in `wrangler.jsonc`, with `workers.dev` and preview URLs turned off. Tag URLs are built from it, so don't change it.
+- **Deploying** is manual: `npm run deploy`, run from the merged `prod` code.
+
 ## Architecture
 
 The project was scaffolded with Cloudflare's official tool (`npm create cloudflare -- --framework=vue`). Lint, format and test configs come from `create-vue`. One Worker serves both halves:
@@ -35,12 +50,12 @@ The project was scaffolded with Cloudflare's official tool (`npm create cloudfla
 - **Routing** is set in `wrangler.jsonc` under `assets`. `not_found_handling: single-page-application` serves `index.html` for page loads and navigation, and those requests **never reach the Worker** unless their path matches `run_worker_first`. Every server route must be listed there.
   - `/api/*` is listed today.
   - The NFC entry point `/tag` must be added when it is built, because a tag tap is a navigation request.
-- **D1** (SQLite) holds data, with schema changes only through `migrations/`. **R2** holds photos and audio. Neither is provisioned yet.
+- **D1** (SQLite) holds data, with schema changes only through `migrations/`. **R2** holds photos and audio.
 - **Tests:** there are two Vitest projects in [vitest.config.ts](vitest.config.ts).
   - `client`: jsdom + `@vue/test-utils`, for `src/**/__tests__/*.spec.ts`.
   - `server`: `@cloudflare/vitest-plugin`, which runs the tests inside workerd with the real bindings from `wrangler.jsonc`, for `server/**/__tests__/*.test.ts`.
   - Test Hono routes with `app.request()`.
-  - When D1 is added, follow Cloudflare's D1 test recipe: `readD1Migrations` in the Vitest config, and `applyD1Migrations` in a setup file.
+  - D1 follows Cloudflare's test recipe. `vitest.config.ts` reads `migrations/` with `readD1Migrations`, and `server/__tests__/apply-migrations.ts` applies them before each test file. Use `env` from `cloudflare:workers`.
 - **TypeScript project references:** `tsconfig.app.json` covers `src`, `tsconfig.worker.json` covers `server`, `tsconfig.vitest.json` covers the client tests, and `tsconfig.node.json` covers the config files.
 
 ## Rules from the owner
@@ -61,7 +76,7 @@ The **repo is public.** Never commit tag tokens, tag URLs, provisioning output (
 - **Referrer policy:** `Referrer-Policy: no-referrer` is set by `hono/secure-headers` in `server/index.ts`.
 - **Sessions** use server-set `HttpOnly; Secure; SameSite=Lax` cookies (`hono/cookie`). Never use `localStorage` for login, because Safari clears it.
 - **R2 stays private.** Every photo and audio file goes through the Worker, which checks the session first. Audio responses must support HTTP Range requests for Safari.
-- **The 120-second dance minimum is enforced on the server** against `music_started_at`. The client timer is not trusted.
+- **The 120-second dance minimum is enforced on the server** against `music_started_at`. The client timer is not trusted. The one exception, which the owner chose, is that when the `tracks` table is empty, `POST /api/posts/:id/start` publishes the draft immediately. That decision is made on the server.
 - **Photos:** resize and re-encode in the browser to strip EXIF and GPS data (about 1600 px, plus a thumbnail of about 400 px). Validate type and size on the server too.
 - **Update badges** are tracked per plant in `plant_views` and cleared only when the viewer opens that plant.
-- **Music licensing:** never add a commercial recording to the repo or to R2 without the owner's confirmed permission. Every track needs `license_type` and `license_details`.
+- **Music licensing:** never add a commercial recording to the repo or to R2 without the owner's confirmed permission. Tracks store only a `title` and an `r2_key`, so keep the record of each song's permission outside the repo.

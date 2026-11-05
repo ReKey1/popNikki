@@ -1,0 +1,305 @@
+<script setup lang="ts">
+import { computed, onMounted, ref } from 'vue'
+import { RouterLink, useRouter } from 'vue-router'
+
+import BaseAvatar from '@/components/BaseAvatar.vue'
+import BaseButton from '@/components/BaseButton.vue'
+import BaseIconButton from '@/components/BaseIconButton.vue'
+import BasePhoto from '@/components/BasePhoto.vue'
+import BasePill from '@/components/BasePill.vue'
+import HistoryRow from '@/components/HistoryRow.vue'
+import SettingsSheet from '@/components/SettingsSheet.vue'
+import { errorMessage, type Draft, type Me, type Post } from '@/lib/api'
+import { dayNumber, formatShortDate } from '@/lib/format'
+
+const router = useRouter()
+
+const me = ref<Me | null>(null)
+const posts = ref<Post[]>([])
+const drafts = ref<Draft[]>([])
+const tab = ref<'posted' | 'drafts'>('posted')
+const settingsOpen = ref(false)
+const error = ref('')
+
+const firstAt = computed(() => posts.value[posts.value.length - 1]?.published_at)
+const day = (at: number) => dayNumber(firstAt.value ?? at, at)
+
+onMounted(async () => {
+  const res = await fetch('/api/me')
+  if (!res.ok) {
+    await router.replace('/')
+    return
+  }
+  const user: Me = await res.json()
+  const [list, saved] = await Promise.all([
+    fetch(`/api/users/${user.id}/posts`),
+    fetch('/api/me/drafts'),
+  ])
+  posts.value = list.ok ? ((await list.json()) as { posts: Post[] }).posts : []
+  drafts.value = saved.ok ? await saved.json() : []
+  me.value = user
+})
+
+async function remove(draft: Draft) {
+  if (!window.confirm('Delete this draft?')) return
+  const res = await fetch(`/api/posts/${draft.id}`, { method: 'DELETE' })
+  if (!res.ok) {
+    error.value = await errorMessage(res)
+    return
+  }
+  drafts.value = drafts.value.filter((d) => d.id !== draft.id)
+}
+</script>
+
+<template>
+  <template v-if="me">
+    <header class="head">
+      <BaseIconButton label="Back" to="/">←</BaseIconButton>
+      <h1 class="head__title mono-label">MY GARDEN</h1>
+      <BaseIconButton tone="outline" label="Settings" @click="settingsOpen = true"
+        >⚙</BaseIconButton
+      >
+    </header>
+
+    <main>
+      <section class="hero">
+        <span class="hero__ring" aria-hidden="true"></span>
+        <BaseAvatar :name="me.username" tone="orange" :size="112" class="hero__avatar" />
+        <h2 class="hero__name">{{ me.username }}</h2>
+        <div class="hero__pills">
+          <BasePill v-if="firstAt">DAY {{ dayNumber(firstAt) }}</BasePill>
+          <BasePill>{{ posts.length }} NIKKI</BasePill>
+        </div>
+      </section>
+
+      <div class="cta">
+        <div class="cta__text">
+          <div class="cta__title">PRACTICED TODAY?</div>
+          <div class="cta__sub">Then water her and drop a nikki.</div>
+        </div>
+        <BaseButton variant="accent" size="sm" :full-width="false" to="/new" class="cta__btn"
+          >+ POST</BaseButton
+        >
+      </div>
+
+      <div class="tabs">
+        <button
+          type="button"
+          :class="['tab', { 'tab--on': tab === 'posted' }]"
+          :aria-pressed="tab === 'posted'"
+          @click="tab = 'posted'"
+        >
+          POSTED · {{ posts.length }}
+        </button>
+        <button
+          type="button"
+          :class="['tab', { 'tab--on': tab === 'drafts' }]"
+          :aria-pressed="tab === 'drafts'"
+          @click="tab = 'drafts'"
+        >
+          DRAFTS · {{ drafts.length }}
+        </button>
+      </div>
+
+      <p v-if="error" class="error" role="alert">{{ error }}</p>
+
+      <template v-if="tab === 'posted'">
+        <p v-if="!posts.length" class="empty">No nikki yet.</p>
+        <ul v-else class="grid">
+          <li v-for="post in posts" :key="post.id">
+            <RouterLink :to="`/plants/${me.id}`" class="grid__link">
+              <BasePhoto
+                :src="`/api/posts/${post.id}/thumb`"
+                :alt="post.description || `Day ${day(post.published_at)}`"
+                ratio="1/1"
+                :radius="10"
+                stripe="sm"
+              >
+                <span class="grid__day">DAY {{ day(post.published_at) }}</span>
+              </BasePhoto>
+            </RouterLink>
+          </li>
+        </ul>
+      </template>
+
+      <template v-else>
+        <p v-if="!drafts.length" class="empty">No drafts. Quitting a practice saves one here.</p>
+        <div v-else class="drafts">
+          <HistoryRow
+            v-for="draft in drafts"
+            :key="draft.id"
+            card
+            :day="day(draft.created_at)"
+            :date="`SAVED ${formatShortDate(draft.created_at)}`"
+            :text="draft.description"
+            :src="`/api/posts/${draft.id}/thumb`"
+          >
+            <template #actions>
+              <BaseButton variant="accent" size="sm" :to="`/practice/${draft.id}`"
+                >▶ PRACTICE</BaseButton
+              >
+              <BaseButton variant="quiet" size="sm" :full-width="false" @click="remove(draft)"
+                >Delete</BaseButton
+              >
+            </template>
+          </HistoryRow>
+        </div>
+      </template>
+    </main>
+
+    <SettingsSheet
+      v-model:open="settingsOpen"
+      :username="me.username"
+      @renamed="me = $event"
+      @logged-out="router.push('/')"
+    />
+  </template>
+</template>
+
+<style scoped>
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+}
+
+.head__title {
+  margin: 0;
+  color: var(--ink-3);
+}
+
+.hero {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px 20px 0;
+}
+
+.hero__ring {
+  position: absolute;
+  top: 0;
+  width: 200px;
+  height: 200px;
+  border: 1.5px solid var(--moss-ring);
+  border-radius: 50%;
+}
+
+.hero__avatar {
+  position: relative;
+  margin-top: 22px;
+}
+
+.hero__name {
+  position: relative;
+  margin: 22px 0 0;
+  font: var(--type-name-xl);
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+.hero__pills {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.cta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 24px 16px 0;
+  padding: 18px;
+  border-radius: 20px;
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.cta__text {
+  flex: 1;
+}
+
+.cta__title {
+  font: var(--type-sign-md);
+}
+
+.cta__sub {
+  margin-top: 4px;
+  font: var(--type-small);
+  color: var(--on-night-2);
+}
+
+.cta__btn {
+  height: 48px;
+}
+
+.tabs {
+  display: flex;
+  gap: 8px;
+  padding: 24px 16px 0;
+}
+
+.tab {
+  flex: 1;
+  height: 44px;
+  border: var(--border-input);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--ink);
+  font: 600 12px var(--font-mono);
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.tab--on {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin: 0;
+  padding: 12px 16px 40px;
+  list-style: none;
+}
+
+.grid__link {
+  display: block;
+  text-decoration: none;
+}
+
+.grid__day {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  padding: 2px 5px;
+  border-radius: 6px;
+  background: var(--paper);
+  font: 600 9px var(--font-mono);
+  color: var(--moss);
+}
+
+.drafts {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 16px 40px;
+}
+
+.empty {
+  padding: 32px 20px;
+  margin: 0;
+  font: var(--type-body);
+  color: var(--ink-4);
+  text-align: center;
+}
+
+.error {
+  margin: 12px 16px 0;
+  font: var(--type-small);
+  color: var(--orange-deep);
+}
+</style>
