@@ -35,8 +35,8 @@ CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs lint (without fix
 ## Cloudflare resources
 
 - Account login is done with `wrangler login`.
-- **D1:** the database is `popnikki` (binding `DB`, location hint APAC). It is created, but it has no schema yet.
-- **R2:** the bucket is `popnikki-files` (binding `FILES`). It is in `wrangler.jsonc` but **not created yet**. R2 must first be activated in the Cloudflare dashboard, and then the bucket is created with `npx wrangler r2 bucket create popnikki-files --location apac`.
+- **D1:** the database is `popnikki` (binding `DB`, location hint APAC). The schema is in `migrations/` and is applied both locally and remotely.
+- **R2:** the bucket is `popnikki-files` (binding `FILES`, location hint APAC). It is created, and public `r2.dev` access is disabled. Keep it that way.
 - Local dev and tests use local simulations of both, so they don't need the real resources.
 - Nothing is deployed yet, and the domain isn't chosen.
 
@@ -49,12 +49,12 @@ The project was scaffolded with Cloudflare's official tool (`npm create cloudfla
 - **Routing** is set in `wrangler.jsonc` under `assets`. `not_found_handling: single-page-application` serves `index.html` for page loads and navigation, and those requests **never reach the Worker** unless their path matches `run_worker_first`. Every server route must be listed there.
   - `/api/*` is listed today.
   - The NFC entry point `/tag` must be added when it is built, because a tag tap is a navigation request.
-- **D1** (SQLite) holds data, with schema changes only through `migrations/`. **R2** holds photos and audio. Neither is provisioned yet.
+- **D1** (SQLite) holds data, with schema changes only through `migrations/`. **R2** holds photos and audio.
 - **Tests:** there are two Vitest projects in [vitest.config.ts](vitest.config.ts).
   - `client`: jsdom + `@vue/test-utils`, for `src/**/__tests__/*.spec.ts`.
   - `server`: `@cloudflare/vitest-plugin`, which runs the tests inside workerd with the real bindings from `wrangler.jsonc`, for `server/**/__tests__/*.test.ts`.
   - Test Hono routes with `app.request()`.
-  - When D1 is added, follow Cloudflare's D1 test recipe: `readD1Migrations` in the Vitest config, and `applyD1Migrations` in a setup file.
+  - D1 follows Cloudflare's test recipe. `vitest.config.ts` reads `migrations/` with `readD1Migrations`, and `server/__tests__/apply-migrations.ts` applies them before each test file. Use `env` from `cloudflare:workers`.
 - **TypeScript project references:** `tsconfig.app.json` covers `src`, `tsconfig.worker.json` covers `server`, `tsconfig.vitest.json` covers the client tests, and `tsconfig.node.json` covers the config files.
 
 ## Rules from the owner
@@ -78,4 +78,4 @@ The **repo is public.** Never commit tag tokens, tag URLs, provisioning output (
 - **The 120-second dance minimum is enforced on the server** against `music_started_at`. The client timer is not trusted.
 - **Photos:** resize and re-encode in the browser to strip EXIF and GPS data (about 1600 px, plus a thumbnail of about 400 px). Validate type and size on the server too.
 - **Update badges** are tracked per plant in `plant_views` and cleared only when the viewer opens that plant.
-- **Music licensing:** never add a commercial recording to the repo or to R2 without the owner's confirmed permission. Every track needs `license_type` and `license_details`.
+- **Music licensing:** never add a commercial recording to the repo or to R2 without the owner's confirmed permission. Tracks store only a `title` and an `r2_key`, so keep the record of each song's permission outside the repo.

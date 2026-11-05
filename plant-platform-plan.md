@@ -116,57 +116,20 @@ Known limitation: anyone who taps a tag or obtains its URL can log in as that pe
 
 ### Data model
 
-Starting point, not a final schema:
+The schema is in [migrations/0001_initial_schema.sql](migrations/0001_initial_schema.sql). In summary:
 
-```sql
-CREATE TABLE users (
-  id TEXT PRIMARY KEY,
-  token_hash TEXT NOT NULL UNIQUE,
-  username TEXT UNIQUE,             -- NULL until the tag is claimed
-  created_at TEXT NOT NULL,
-  claimed_at TEXT,
-  revoked_at TEXT
-);
+- `users`: one row per tag. It holds `token_hash` (SHA-256 of the tag token), `username` (NULL until claimed, unique ignoring case), `last_login_at` and `revoked_at`. Replacing a tag means a new `token_hash` on the same row.
+- `sessions`: one row per logged-in device, keyed by the SHA-256 hash of its cookie.
+- `posts`: growth entries with `description`, `photo_key`, `thumb_key`, `track_id` and `music_started_at`. A post is a draft while `published_at` is NULL.
+- `tracks`: the playlist, with just a `title` and an `r2_key` (simplified in migration 0002).
+- `plant_views`: `(viewer_id, owner_id) -> last_viewed_at`, for update badges.
 
-CREATE TABLE sessions (
-  id_hash TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL REFERENCES users(id),
-  created_at TEXT NOT NULL,
-  expires_at TEXT NOT NULL
-);
+Choices behind it:
 
-CREATE TABLE tracks (
-  id TEXT PRIMARY KEY,
-  title TEXT NOT NULL,
-  artist TEXT NOT NULL,
-  r2_key TEXT NOT NULL,
-  license_type TEXT NOT NULL,
-  license_details TEXT NOT NULL,
-  attribution TEXT,
-  active INTEGER NOT NULL DEFAULT 1
-);
-
-CREATE TABLE posts (
-  id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL REFERENCES users(id),
-  status TEXT NOT NULL CHECK (status IN ('draft', 'published')),
-  photo_key TEXT,
-  thumb_key TEXT,
-  height_mm INTEGER,
-  note TEXT,
-  track_id TEXT REFERENCES tracks(id),
-  music_started_at TEXT,
-  created_at TEXT NOT NULL,
-  published_at TEXT
-);
-
-CREATE TABLE plant_views (
-  viewer_id TEXT NOT NULL REFERENCES users(id),
-  owner_id TEXT NOT NULL REFERENCES users(id),
-  last_viewed_at TEXT NOT NULL,
-  PRIMARY KEY (viewer_id, owner_id)
-);
-```
+- Ids are `INTEGER PRIMARY KEY`. Timestamps are `INTEGER` Unix epoch milliseconds (`Date.now()`).
+- Rows for a user are removed with them (`ON DELETE CASCADE`).
+- `posts(user_id, published_at)` is indexed for the main page and plant history.
+- Height isn't stored (open decision 6). A later migration can add it.
 
 ### Main page and update badges
 
@@ -217,7 +180,7 @@ This is planning guidance, not legal advice. Assume Japan, based on the owner's 
 - Commercial recordings generally need clearance for the composition, often through JASRAC, and usually permission from the record label.
 - A login-protected site reduces exposure but isn't a clear exemption. Japanese law treats a large number of specific people as "the public" without setting a clear number.
 
-**Do not upload a commercial recording unless the owner has confirmed the required permissions.** Every track must have license details in the `tracks` table.
+**Do not upload a commercial recording unless the owner has confirmed the required permissions.**
 
 Options, in the order previously recommended:
 
@@ -237,7 +200,7 @@ If a track will be shortened to two minutes, check that its licence allows that.
 3. Which music option will the team use, and for which songs?
 4. How many team members and tags are needed?
 5. Which language or languages should the interface use?
-6. Should height be entered as a current measurement, with growth calculated automatically? This is the assumed approach.
+6. ~~Should height be entered as a current measurement?~~ Decided: no height for now. Posts have a photo, a description and a date.
 
 ## Suggested build order
 
