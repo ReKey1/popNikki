@@ -196,7 +196,7 @@ If a track will be shortened to two minutes, check that its licence allows that.
 ## Open decisions
 
 1. Approve Cloudflare, or stay with Netlify and Supabase?
-2. What domain name will the site use? This must be settled before any tags are locked.
+2. ~~What domain name will the site use?~~ Decided: `pop-nikki.party`.
 3. Which music option will the team use, and for which songs?
 4. How many team members and tags are needed?
 5. Which language or languages should the interface use?

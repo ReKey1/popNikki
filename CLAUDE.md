@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A private site for a dance team. Scanning a plant pot's NFC tag logs the user in. Users post plant growth photos, and each post is published only after a two-minute dance with music. [plant-platform-plan.md](plant-platform-plan.md) is the design handoff: requirements, proposed schema, login and dance flows, and open decisions. Read the relevant section before building a feature.
 
-Hosting is **Cloudflare**, which has been confirmed. Remaining open decisions are in the plan, and the domain must be fixed before any tag is locked.
+Hosting is **Cloudflare**, which has been confirmed. The domain is `pop-nikki.party`. Remaining open decisions are in the plan.
 
 ## Commands
 
@@ -38,7 +38,8 @@ CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs lint (without fix
 - **D1:** the database is `popnikki` (binding `DB`, location hint APAC). The schema is in `migrations/` and is applied both locally and remotely.
 - **R2:** the bucket is `popnikki-files` (binding `FILES`, location hint APAC). It is created, and public `r2.dev` access is disabled. Keep it that way.
 - Local dev and tests use local simulations of both, so they don't need the real resources.
-- Nothing is deployed yet, and the domain isn't chosen.
+- **Domain:** `pop-nikki.party`, attached as a Worker custom domain in `wrangler.jsonc`, with `workers.dev` and preview URLs turned off. Tag URLs are built from it, so don't change it.
+- **Deploying** is manual: `npm run deploy`, run from the merged `prod` code.
 
 ## Architecture
 

@@ -7,6 +7,10 @@
   "name": "popnikki",
   "compatibility_date": "2026-11-02",
   "main": "server/index.ts",
+  // Served only on the custom domain. Tag URLs are built from it, so it must not change.
+  "routes": [{ "pattern": "pop-nikki.party", "custom_domain": true }],
+  "workers_dev": false,
+  "preview_urls": false,
   "assets": {
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*", "/tag"],
