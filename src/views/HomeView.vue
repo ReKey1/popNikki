@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { storeToRefs } from 'pinia'
+import { computed, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
 
 import BaseAvatar from '@/components/BaseAvatar.vue'
@@ -8,37 +9,33 @@ import BasePill from '@/components/BasePill.vue'
 import BaseWordmark from '@/components/BaseWordmark.vue'
 import NikkiTile from '@/components/NikkiTile.vue'
 import { usePolling } from '@/composables/usePolling'
-import type { Me, Plant } from '@/lib/api'
 import { dayNumber, timeAgo } from '@/lib/format'
+import { useGardenStore } from '@/stores/garden'
+import { useSessionStore } from '@/stores/session'
 
-const loading = ref(true)
-const me = ref<Me | null>(null)
-const plants = ref<Plant[]>([])
+const session = useSessionStore()
+const garden = useGardenStore()
+const { me } = storeToRefs(session)
+const { plants } = storeToRefs(garden)
 
-const fresh = computed(() => plants.value.filter((p) => p.unseen).length)
+const fresh = computed(() => plants.value?.filter((p) => p.unseen).length ?? 0)
 
-async function loadPlants() {
-  const res = await fetch('/api/plants')
-  // A failed refresh keeps the garden on screen.
-  if (res.ok) plants.value = await res.json()
+/** Refreshes the garden, then fetches each plant's nikki ahead, so opening one is instant. */
+async function refresh() {
+  const res = await garden.loadPlants()
+  if (res.ok) for (const plant of plants.value ?? []) void garden.prefetchPosts(plant.id)
 }
 
+// The garden from the last visit shows at once while this refresh runs.
 onMounted(async () => {
-  const res = await fetch('/api/me')
-  if (res.ok) {
-    me.value = await res.json()
-    await loadPlants()
-  }
-  loading.value = false
+  if (await session.load()) await refresh()
 })
 // New nikki and badges show up without a reload.
-usePolling(() => me.value && loadPlants())
+usePolling(() => me.value && refresh())
 </script>
 
 <template>
-  <div v-if="loading" class="status mono-label" aria-live="polite">LOADING…</div>
-
-  <main v-else-if="!me" class="gate">
+  <main v-if="!me" class="gate">
     <h1 class="gate__mark"><BaseWordmark layout="stacked" sticker /></h1>
     <p class="gate__tagline">PRACTICE · WATER · POST</p>
     <p class="gate__note">No seed, no entry. Tap your plant's tag to log in.</p>
@@ -52,7 +49,7 @@ usePolling(() => me.value && loadPlants())
       </RouterLink>
     </header>
 
-    <main>
+    <main v-if="plants">
       <div class="intro">
         <div>
           <div class="intro__kicker mono-label">THE GARDEN</div>
@@ -84,12 +81,6 @@ usePolling(() => me.value && loadPlants())
 </template>
 
 <style scoped>
-.status {
-  padding: 40px 20px;
-  color: var(--ink-4);
-  text-align: center;
-}
-
 .gate {
   display: flex;
   flex-direction: column;

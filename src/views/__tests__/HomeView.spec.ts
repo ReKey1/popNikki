@@ -1,12 +1,14 @@
 import { flushPromises, mount } from '@vue/test-utils'
+import { getActivePinia } from 'pinia'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { stubApi, testRouter } from '@/__tests__/helpers'
+import { stubApi, testPinia, testRouter } from '@/__tests__/helpers'
 import { POLL_MS } from '@/composables/usePolling'
+import { useGardenStore } from '@/stores/garden'
 import HomeView from '../HomeView.vue'
 
 const mountHome = () =>
-  mount(HomeView, { global: { plugins: [testRouter()] }, attachTo: document.body })
+  mount(HomeView, { global: { plugins: [testPinia(), testRouter()] }, attachTo: document.body })
 
 const plant = (id: number, username: string, extra = {}) => ({
   id,
@@ -98,6 +100,40 @@ describe('HomeView', () => {
 
     expect(wrapper.text()).toContain('1 FRESH')
     expect(wrapper.get('li img').attributes('src')).toBe('/api/posts/7/thumb')
+  })
+
+  it('shows the garden from the last visit at once, with no loading state', async () => {
+    const fetch = stubApi({
+      '/api/me': Response.json({ id: 1, username: 'nikki' }),
+      '/api/plants': Response.json([plant(2, 'けんじ')]),
+    })
+    mountHome().unmount()
+    await flushPromises()
+
+    fetch.mockImplementation(() => new Promise(() => {}))
+    const again = mount(HomeView, { global: { plugins: [getActivePinia()!, testRouter()] } })
+    expect(again.text()).not.toContain('LOADING')
+    expect(again.findAll('li')).toHaveLength(1)
+    expect(again.text()).toContain('1 plant,growing on beat.')
+  })
+
+  it('fetches every plant’s nikki ahead, once', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    const fetch = stubApi({
+      '/api/me': Response.json({ id: 1, username: 'nikki' }),
+      '/api/plants': Response.json([plant(2, 'けんじ'), plant(1, 'nikki')]),
+      '/api/users/2/posts': Response.json({ owner: { id: 2, username: 'けんじ' }, posts: [] }),
+      '/api/users/1/posts': Response.json({ owner: { id: 1, username: 'nikki' }, posts: [] }),
+    })
+    mountHome()
+    await flushPromises()
+    vi.advanceTimersByTime(POLL_MS)
+    await flushPromises()
+
+    const calls = fetch.mock.calls.map(([url]) => url)
+    expect(calls.filter((u) => u === '/api/users/2/posts')).toHaveLength(1)
+    expect(calls.filter((u) => u === '/api/users/1/posts')).toHaveLength(1)
+    expect(useGardenStore().posts[2]).toBeDefined()
   })
 
   it('does not poll for a logged-out visitor', async () => {

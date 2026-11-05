@@ -2,10 +2,14 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createWebHistory } from 'vue-router'
 
-import { stubApi, stubDialog, testRouter } from '@/__tests__/helpers'
+import { stubApi, stubDialog, testPinia, testRouter } from '@/__tests__/helpers'
 import { POLL_MS } from '@/composables/usePolling'
 import type { PlantPosts } from '@/lib/api'
+import { preloadImages } from '@/lib/preload'
+import { useGardenStore } from '@/stores/garden'
 import PlantView from '../PlantView.vue'
+
+vi.mock('@/lib/preload', () => ({ preloadImages: vi.fn<(urls: string[]) => void>() }))
 
 const DAY = 86_400_000
 const now = Date.now()
@@ -34,7 +38,12 @@ async function mountPlant(
   {
     postId,
     router = testRouter(),
-  }: { postId?: string; router?: ReturnType<typeof testRouter> } = {},
+    pinia = testPinia(),
+  }: {
+    postId?: string
+    router?: ReturnType<typeof testRouter>
+    pinia?: ReturnType<typeof testPinia>
+  } = {},
 ) {
   const api: Record<string, Response> = {
     '/api/users/2/posts': Response.json(posts()),
@@ -45,7 +54,7 @@ async function mountPlant(
   const fetch = stubApi(api)
   const wrapper = mount(PlantView, {
     props: { id: '2', postId },
-    global: { plugins: [router] },
+    global: { plugins: [pinia, router] },
     attachTo: document.body,
   })
   await flushPromises()
@@ -81,6 +90,44 @@ describe('PlantView', () => {
     expect(history[0]!.text()).toContain('🌱 6')
 
     expect(fetch).toHaveBeenCalledWith('/api/users/2/seen', { method: 'POST' })
+  })
+
+  it('shows a plant fetched ahead at once, before its refresh answers', async () => {
+    const fetch = stubApi({})
+    fetch.mockImplementation(() => new Promise(() => {}))
+    const pinia = testPinia()
+    useGardenStore().posts[2] = posts()
+
+    const wrapper = mount(PlantView, {
+      props: { id: '2' },
+      global: { plugins: [pinia, testRouter()] },
+    })
+    expect(wrapper.get('h1').text()).toBe('けんじ')
+    expect(wrapper.get('.featured img').attributes('src')).toBe('/api/posts/9/photo')
+    expect(wrapper.get('.featured img').attributes('loading')).toBe('eager')
+  })
+
+  it('preloads the full-size photos of every nikki', async () => {
+    await mountPlant()
+    expect(preloadImages).toHaveBeenCalledWith(['/api/posts/9/photo', '/api/posts/4/photo'])
+  })
+
+  it('clears the badge in the cached garden too', async () => {
+    const pinia = testPinia()
+    const garden = useGardenStore()
+    garden.plants = [
+      {
+        id: 2,
+        username: 'けんじ',
+        post_id: 9,
+        published_at: now,
+        post_count: 2,
+        first_published_at: now,
+        unseen: true,
+      },
+    ]
+    await mountPlant({}, { pinia })
+    expect(garden.plants[0]!.unseen).toBe(false)
   })
 
   it('moves the reaction at once and saves it', async () => {

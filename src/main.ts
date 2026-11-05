@@ -12,12 +12,16 @@ import '@fontsource/zen-kaku-gothic-new/500.css'
 import '@fontsource/zen-kaku-gothic-new/700.css'
 import './assets/main.css'
 
+import { createPinia } from 'pinia'
 import { createApp } from 'vue'
 import App from './App.vue'
 import router from './router'
 
 const app = createApp(App)
 
+// Pinia goes first: the router's guard reads the session store on the first navigation.
+app.use(createPinia())
 app.use(router)
 
-app.mount('#app')
+// Wait for the session check, so the first paint is the real page instead of a loading state.
+void router.isReady().then(() => app.mount('#app'))

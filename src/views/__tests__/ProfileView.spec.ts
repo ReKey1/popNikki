@@ -1,15 +1,21 @@
 import { flushPromises, mount } from '@vue/test-utils'
+import { getActivePinia } from 'pinia'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { createWebHistory } from 'vue-router'
 
-import { stubApi, stubDialog, testRouter } from '@/__tests__/helpers'
+import { stubApi, stubDialog, testPinia, testRouter } from '@/__tests__/helpers'
+import { useGardenStore } from '@/stores/garden'
+import { useSessionStore } from '@/stores/session'
 import ProfileView from '../ProfileView.vue'
 
 const DAY = 24 * 60 * 60 * 1000
 const now = Date.now()
 
 const mountProfile = async (router = testRouter()) => {
-  const wrapper = mount(ProfileView, { global: { plugins: [router] }, attachTo: document.body })
+  const wrapper = mount(ProfileView, {
+    global: { plugins: [testPinia(), router] },
+    attachTo: document.body,
+  })
   await flushPromises()
   return { wrapper, router }
 }
@@ -113,10 +119,31 @@ describe('ProfileView', () => {
     expect(wrapper.get('h2').text()).toBe('bloom')
   })
 
-  it('sends a logged-out visitor home', async () => {
-    stubApi({ '/api/me': Response.json({ error: 'Not logged in' }, { status: 401 }) })
-    const { router } = await mountProfile()
+  it('forgets the session and the cached garden on logout', async () => {
+    stubProfile()
+    const router = testRouter()
+    await router.push('/me')
+    const { wrapper } = await mountProfile(router)
+    expect(useGardenStore().posts[3]).toBeDefined()
+
+    wrapper.findComponent({ name: 'SettingsSheet' }).vm.$emit('loggedOut')
+    await flushPromises()
+    expect(useSessionStore().me).toBeNull()
+    expect(useGardenStore().posts).toEqual({})
     expect(router.currentRoute.value.path).toBe('/')
+  })
+
+  it('shows your nikki from the last visit while they refresh', async () => {
+    const fetch = stubProfile()
+    const { wrapper } = await mountProfile()
+    wrapper.unmount()
+
+    // The second visit's requests never answer, and the page is still complete.
+    fetch.mockImplementation(() => new Promise(() => {}))
+    const again = mount(ProfileView, { global: { plugins: [getActivePinia()!, testRouter()] } })
+    await flushPromises()
+    expect(again.findAll('.grid li')).toHaveLength(2)
+    expect(again.text()).toContain('DRAFTS · 1')
   })
 
   it('goes back to the page it was opened from', async () => {

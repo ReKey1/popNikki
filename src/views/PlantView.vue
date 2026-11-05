@@ -12,22 +12,19 @@ import BaseSheet from '@/components/BaseSheet.vue'
 import HistoryRow from '@/components/HistoryRow.vue'
 import ReactionBar from '@/components/ReactionBar.vue'
 import { usePolling } from '@/composables/usePolling'
-import {
-  errorMessage,
-  fetchReactors,
-  setReaction,
-  type PlantPosts,
-  type Post,
-  type Reactor,
-} from '@/lib/api'
+import { errorMessage, fetchReactors, type Post, type Reactor } from '@/lib/api'
 import { dayNumber, formatShortDate, formatStamp } from '@/lib/format'
 import { goBack } from '@/lib/navigation'
+import { preloadImages } from '@/lib/preload'
 import { reactionSummary } from '@/lib/reactions'
+import { useGardenStore } from '@/stores/garden'
 
 const props = defineProps<{ id: string; postId?: string }>()
 const router = useRouter()
+const garden = useGardenStore()
 
-const data = ref<PlantPosts | null>(null)
+/** This plant's nikki: drawn at once when the garden fetched them ahead, then refreshed. */
+const data = computed(() => garden.posts[Number(props.id)] ?? null)
 const error = ref('')
 
 const newest = computed(() => data.value?.posts[0])
@@ -40,30 +37,23 @@ const firstAt = computed(() => data.value?.posts[data.value.posts.length - 1]?.p
 const day = (at: number) => dayNumber(firstAt.value ?? at, at)
 const counts = (post: Post) => Object.entries(post.reactions).sort((a, b) => b[1] - a[1])
 
-/** Bumped by every reaction, so a refresh that raced one doesn't undo it on screen. */
-let reactionVersion = 0
-let reactionsInFlight = 0
 /** The newest post id the viewer was last marked as having seen; undefined before the first. */
 let seenNewest: number | null | undefined
 
 async function load(id: string, initial: boolean) {
-  const version = reactionVersion
-  const res = await fetch(`/api/users/${id}/posts`)
+  const res = await garden.loadPosts(Number(id))
   if (id !== props.id) return
   if (!res.ok) {
     // A failed refresh keeps what is on screen.
     if (initial) error.value = await errorMessage(res)
     return
   }
-  const fresh: PlantPosts = await res.json()
-  if (reactionsInFlight || version !== reactionVersion) return
-  data.value = fresh
 
   // Opening the plant clears its update badge, and so does a post arriving while you look.
-  const newestId = fresh.posts[0]?.id ?? null
+  const newestId = data.value?.posts[0]?.id ?? null
   if (newestId !== seenNewest) {
     seenNewest = newestId
-    await fetch(`/api/users/${id}/seen`, { method: 'POST' })
+    await garden.markSeen(Number(id))
   }
 }
 
@@ -71,7 +61,6 @@ watch(
   () => props.id,
   (id) => {
     error.value = ''
-    data.value = null
     seenNewest = undefined
     return load(id, true)
   },
@@ -79,32 +68,16 @@ watch(
 )
 usePolling(() => data.value && load(props.id, false))
 
-/** Moves the viewer's reaction on `post` to `emoji` (or removes it) in the local counts. */
-function applyReaction(post: Post, emoji: string | null) {
-  const old = post.my_reaction
-  if (old) {
-    post.reactions[old] = (post.reactions[old] ?? 1) - 1
-    if (!post.reactions[old]) delete post.reactions[old]
-  }
-  if (emoji) post.reactions[emoji] = (post.reactions[emoji] ?? 0) + 1
-  post.my_reaction = emoji
-}
+// The full-size photos of the other nikki download in the background, so tapping one shows it at once.
+watch(
+  () => data.value?.posts,
+  (posts) => posts && preloadImages(posts.map((p) => `/api/posts/${p.id}/photo`)),
+  { immediate: true },
+)
 
-// Updates at once, and rolls back if the server says no.
 async function react(post: Post, emoji: string | null) {
-  const old = post.my_reaction
-  applyReaction(post, emoji)
-  reactionVersion++
-  reactionsInFlight++
-  try {
-    const res = await setReaction(post.id, emoji)
-    if (!res.ok) {
-      applyReaction(post, old)
-      error.value = await errorMessage(res)
-    }
-  } finally {
-    reactionsInFlight--
-  }
+  const res = await garden.react(post, emoji)
+  if (!res.ok) error.value = await errorMessage(res)
 }
 
 // Holding the counts shows who reacted.
@@ -149,6 +122,7 @@ onLongPress(countsRow, showReactors)
           :alt="featured.description || `${data.owner.username}'s plant`"
           :radius="22"
           stripe="lg"
+          loading="eager"
           class="featured__photo"
         >
           <ReactionBar

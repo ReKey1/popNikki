@@ -4,6 +4,7 @@ const {
   radius = 16,
   stripe = 'md',
   night = false,
+  loading = 'lazy',
 } = defineProps<{
   /** Image URL. Without it, the striped placeholder shows. */
   src?: string
@@ -14,6 +15,8 @@ const {
   radius?: number
   stripe?: 'sm' | 'md' | 'lg'
   night?: boolean
+  /** `eager` for the photo a page is about, so it doesn't wait for layout. */
+  loading?: 'lazy' | 'eager'
 }>()
 </script>
 
@@ -26,7 +29,7 @@ const {
       background: night ? 'var(--stripes-night)' : `var(--stripes-${stripe})`,
     }"
   >
-    <img v-if="src" :src :alt="alt ?? ''" class="photo__img" loading="lazy" />
+    <img v-if="src" :src :alt="alt ?? ''" class="photo__img" :loading />
     <span v-else-if="label" :class="['photo__label', { 'photo__label--night': night }]">{{
       label
     }}</span>

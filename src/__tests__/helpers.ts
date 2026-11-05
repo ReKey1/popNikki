@@ -1,3 +1,4 @@
+import { createPinia, setActivePinia } from 'pinia'
 import { vi } from 'vitest'
 import { createMemoryHistory, createRouter, type RouterHistory } from 'vue-router'
 
@@ -10,6 +11,13 @@ export function testRouter(history: RouterHistory = createMemoryHistory()) {
     history,
     routes: [{ path: '/:path(.*)*', component: { render: () => null } }],
   })
+}
+
+/** A fresh, empty set of stores, active for the test and ready to pass to `mount`. */
+export function testPinia() {
+  const pinia = createPinia()
+  setActivePinia(pinia)
+  return pinia
 }
 
 /** jsdom has no modal dialogs yet, so this adds the two methods BaseSheet uses. */
