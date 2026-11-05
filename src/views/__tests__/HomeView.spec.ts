@@ -2,6 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { stubApi, testRouter } from '@/__tests__/helpers'
+import { POLL_MS } from '@/composables/usePolling'
 import HomeView from '../HomeView.vue'
 
 const mountHome = () =>
@@ -20,6 +21,7 @@ const plant = (id: number, username: string, extra = {}) => ({
 
 describe('HomeView', () => {
   afterEach(() => {
+    vi.useRealTimers()
     vi.unstubAllGlobals()
     document.body.innerHTML = ''
   })
@@ -75,5 +77,36 @@ describe('HomeView', () => {
     expect(profile.text()).toBe('N')
     expect(wrapper.find('button[aria-label="Settings"]').exists()).toBe(false)
     expect(wrapper.find('dialog').exists()).toBe(false)
+  })
+
+  it('picks up new nikki without a reload', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    const api: Record<string, Response> = {
+      '/api/me': Response.json({ id: 1, username: 'nikki' }),
+      '/api/plants': Response.json([plant(2, 'けんじ')]),
+    }
+    stubApi(api)
+    const wrapper = mountHome()
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('FRESH')
+
+    api['/api/plants'] = Response.json([
+      plant(2, 'けんじ', { post_id: 7, published_at: Date.now(), post_count: 1, unseen: true }),
+    ])
+    vi.advanceTimersByTime(POLL_MS)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('1 FRESH')
+    expect(wrapper.get('li img').attributes('src')).toBe('/api/posts/7/thumb')
+  })
+
+  it('does not poll for a logged-out visitor', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    const fetch = stubApi({ '/api/me': Response.json({}, { status: 401 }) })
+    mountHome()
+    await flushPromises()
+    vi.advanceTimersByTime(3 * POLL_MS)
+    await flushPromises()
+    expect(fetch).toHaveBeenCalledTimes(1)
   })
 })

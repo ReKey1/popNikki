@@ -11,6 +11,7 @@ import HistoryRow from '@/components/HistoryRow.vue'
 import SettingsSheet from '@/components/SettingsSheet.vue'
 import { errorMessage, type Draft, type Me, type Post } from '@/lib/api'
 import { dayNumber, formatShortDate } from '@/lib/format'
+import { goBack } from '@/lib/navigation'
 
 const router = useRouter()
 
@@ -54,7 +55,7 @@ async function remove(draft: Draft) {
 <template>
   <template v-if="me">
     <header class="head">
-      <BaseIconButton label="Back" to="/">←</BaseIconButton>
+      <BaseIconButton label="Back" @click="goBack(router)">←</BaseIconButton>
       <h1 class="head__title mono-label">MY GARDEN</h1>
       <BaseIconButton tone="outline" label="Settings" @click="settingsOpen = true"
         >⚙</BaseIconButton

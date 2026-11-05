@@ -1,12 +1,15 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { createWebHistory } from 'vue-router'
 
-import { stubApi, testRouter } from '@/__tests__/helpers'
+import { stubApi, stubDialog, testRouter } from '@/__tests__/helpers'
+import { POLL_MS } from '@/composables/usePolling'
+import type { PlantPosts } from '@/lib/api'
 import PlantView from '../PlantView.vue'
 
 const DAY = 86_400_000
 const now = Date.now()
-const posts = () => ({
+const posts = (): PlantPosts => ({
   owner: { id: 2, username: 'けんじ' },
   posts: [
     {
@@ -26,16 +29,27 @@ const posts = () => ({
   ],
 })
 
-async function mountPlant(routes: Record<string, Response> = {}) {
-  const fetch = stubApi({
+async function mountPlant(
+  routes: Record<string, Response> = {},
+  {
+    postId,
+    router = testRouter(),
+  }: { postId?: string; router?: ReturnType<typeof testRouter> } = {},
+) {
+  const api: Record<string, Response> = {
     '/api/users/2/posts': Response.json(posts()),
     '/api/users/2/seen': new Response(null, { status: 204 }),
     '/api/posts/9/reaction': new Response(null, { status: 204 }),
     ...routes,
+  }
+  const fetch = stubApi(api)
+  const wrapper = mount(PlantView, {
+    props: { id: '2', postId },
+    global: { plugins: [router] },
+    attachTo: document.body,
   })
-  const wrapper = mount(PlantView, { props: { id: '2' }, global: { plugins: [testRouter()] } })
   await flushPromises()
-  return { fetch, wrapper }
+  return { api, fetch, router, wrapper }
 }
 
 const pills = (wrapper: Awaited<ReturnType<typeof mountPlant>>['wrapper']) =>
@@ -45,7 +59,9 @@ const button = (wrapper: Awaited<ReturnType<typeof mountPlant>>['wrapper'], emoj
 
 describe('PlantView', () => {
   afterEach(() => {
+    vi.useRealTimers()
     vi.unstubAllGlobals()
+    document.body.innerHTML = ''
   })
 
   it('shows the newest nikki large, the rest as history, and clears the badge', async () => {
@@ -53,12 +69,14 @@ describe('PlantView', () => {
 
     expect(wrapper.get('h1').text()).toBe('けんじ')
     expect(wrapper.text()).toContain('DAY 5 · 2 NIKKI')
-    expect(wrapper.get('.latest img').attributes('src')).toBe('/api/posts/9/photo')
+    expect(wrapper.get('.featured img').attributes('src')).toBe('/api/posts/9/photo')
     expect(wrapper.text()).toContain('Second leaf!')
     expect(pills(wrapper)).toEqual(['💧 5', '🔥 3'])
 
-    const history = wrapper.findAll('article.row')
+    expect(wrapper.text()).toContain('PREVIOUS NIKKI')
+    const history = wrapper.findAll('.row')
     expect(history).toHaveLength(1)
+    expect(history[0]!.attributes('href')).toBe('/plants/2/4')
     expect(history[0]!.text()).toContain('DAY 1 ·')
     expect(history[0]!.text()).toContain('🌱 6')
 
@@ -98,5 +116,129 @@ describe('PlantView', () => {
       '/api/users/2/posts': Response.json({ error: 'Not Found' }, { status: 404 }),
     })
     expect(wrapper.get('[role="alert"]').text()).toBe('Not Found')
+  })
+
+  it('shows an older nikki large when its id is in the URL', async () => {
+    const { wrapper } = await mountPlant({}, { postId: '4' })
+
+    expect(wrapper.get('.featured img').attributes('src')).toBe('/api/posts/4/photo')
+    expect(wrapper.text()).toContain('Seed in.')
+    expect(pills(wrapper)).toEqual(['🌱 6'])
+    expect(wrapper.text()).toContain('OTHER NIKKI')
+    const rows = wrapper.findAll('.row')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.attributes('href')).toBe('/plants/2/9')
+  })
+
+  it('falls back to the newest nikki for an unknown post id', async () => {
+    const { wrapper } = await mountPlant({}, { postId: '123' })
+    expect(wrapper.get('.featured img').attributes('src')).toBe('/api/posts/9/photo')
+    expect(wrapper.text()).toContain('PREVIOUS NIKKI')
+  })
+
+  it('refreshes while open and clears the badge again for a new nikki', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    const { api, fetch, wrapper } = await mountPlant()
+    const newer = posts()
+    newer.posts[0]!.reactions = { '💧': 7, '🔥': 3 }
+    newer.posts.unshift({
+      id: 12,
+      description: 'Third leaf',
+      published_at: now + 1,
+      reactions: {},
+      my_reaction: null,
+    })
+    api['/api/users/2/posts'] = Response.json(newer)
+
+    vi.advanceTimersByTime(POLL_MS)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Third leaf')
+    expect(wrapper.text()).toContain('💧 7 · 🔥 3')
+    const seen = fetch.mock.calls.filter(([url]) => url === '/api/users/2/seen')
+    expect(seen).toHaveLength(2)
+  })
+
+  it('keeps a reaction on screen when a refresh races it', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    const { fetch, wrapper } = await mountPlant()
+    let release!: () => void
+    fetch.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => (release = () => resolve(new Response(null, { status: 204 })))),
+    )
+
+    await button(wrapper, '💧').trigger('click')
+    vi.advanceTimersByTime(POLL_MS) // the refresh still has the old counts
+    await flushPromises()
+    expect(pills(wrapper)).toEqual(['💧 6', '🔥 2'])
+
+    release()
+    await flushPromises()
+    expect(pills(wrapper)).toEqual(['💧 6', '🔥 2'])
+  })
+
+  it('shows who reacted when the counts are held', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    stubDialog()
+    const { fetch, wrapper } = await mountPlant({
+      '/api/posts/9/reactions': Response.json([
+        { emoji: '💧', username: 'nikki' },
+        { emoji: '🔥', username: 'bob' },
+      ]),
+    })
+
+    await wrapper.get('.featured__counts').trigger('pointerdown')
+    expect(fetch).not.toHaveBeenCalledWith('/api/posts/9/reactions')
+    vi.advanceTimersByTime(500)
+    await flushPromises()
+
+    expect(fetch).toHaveBeenCalledWith('/api/posts/9/reactions')
+    const dialog = wrapper.get('dialog')
+    expect(dialog.attributes('open')).toBeDefined()
+    expect(dialog.findAll('li').map((li) => li.text())).toEqual(['Nnikki💧', 'Bbob🔥'])
+  })
+
+  it('opens who reacted from the keyboard too', async () => {
+    stubDialog()
+    const { wrapper } = await mountPlant({
+      '/api/posts/9/reactions': Response.json([{ emoji: '💧', username: 'nikki' }]),
+    })
+    await wrapper.get('.featured__counts').trigger('keydown', { key: 'Enter' })
+    await flushPromises()
+    expect(wrapper.get('dialog').attributes('open')).toBeDefined()
+  })
+
+  it('goes back to the previous page, or home when opened directly', async () => {
+    const router = testRouter(createWebHistory())
+    await router.push('/me')
+    await router.push('/plants/2')
+    const { wrapper } = await mountPlant({}, { router })
+    await wrapper.get('button[aria-label="Back"]').trigger('click')
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/me'))
+
+    const direct = testRouter()
+    await direct.push('/plants/2')
+    const other = await mountPlant({}, { router: direct })
+    await other.wrapper.get('button[aria-label="Back"]').trigger('click')
+    await flushPromises()
+    expect(direct.currentRoute.value.path).toBe('/')
+  })
+
+  it('leaves the plant in one step after looking through its nikki', async () => {
+    const router = testRouter(createWebHistory())
+    await router.push('/me')
+    await router.push('/plants/2')
+    const { wrapper } = await mountPlant({}, { router })
+
+    // Switching posts replaces the history entry instead of adding one.
+    await wrapper.get('a.row').trigger('click')
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/plants/2/4'))
+    await wrapper.setProps({ postId: '4' })
+    await wrapper.get('a.row').trigger('click')
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/plants/2/9'))
+
+    await wrapper.get('button[aria-label="Back"]').trigger('click')
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/me'))
   })
 })

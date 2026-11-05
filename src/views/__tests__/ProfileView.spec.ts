@@ -1,5 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { createWebHistory } from 'vue-router'
 
 import { stubApi, stubDialog, testRouter } from '@/__tests__/helpers'
 import ProfileView from '../ProfileView.vue'
@@ -7,8 +8,7 @@ import ProfileView from '../ProfileView.vue'
 const DAY = 24 * 60 * 60 * 1000
 const now = Date.now()
 
-const mountProfile = async () => {
-  const router = testRouter()
+const mountProfile = async (router = testRouter()) => {
   const wrapper = mount(ProfileView, { global: { plugins: [router] }, attachTo: document.body })
   await flushPromises()
   return { wrapper, router }
@@ -117,5 +117,16 @@ describe('ProfileView', () => {
     stubApi({ '/api/me': Response.json({ error: 'Not logged in' }, { status: 401 }) })
     const { router } = await mountProfile()
     expect(router.currentRoute.value.path).toBe('/')
+  })
+
+  it('goes back to the page it was opened from', async () => {
+    stubProfile()
+    const router = testRouter(createWebHistory())
+    await router.push('/plants/2')
+    await router.push('/me')
+    const { wrapper } = await mountProfile(router)
+
+    await wrapper.get('button[aria-label="Back"]').trigger('click')
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/plants/2'))
   })
 })

@@ -40,3 +40,11 @@ export function setReaction(postId: number, emoji: string | null): Promise<Respo
       })
     : fetch(url, { method: 'DELETE' })
 }
+
+/** One member's reaction on a post. */
+export type Reactor = { emoji: string; username: string }
+
+/** Who reacted to a post, oldest first. */
+export function fetchReactors(postId: number): Promise<Response> {
+  return fetch(`/api/posts/${postId}/reactions`)
+}

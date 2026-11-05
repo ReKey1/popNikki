@@ -7,6 +7,7 @@ import BaseFab from '@/components/BaseFab.vue'
 import BasePill from '@/components/BasePill.vue'
 import BaseWordmark from '@/components/BaseWordmark.vue'
 import NikkiTile from '@/components/NikkiTile.vue'
+import { usePolling } from '@/composables/usePolling'
 import type { Me, Plant } from '@/lib/api'
 import { dayNumber, timeAgo } from '@/lib/format'
 
@@ -16,14 +17,22 @@ const plants = ref<Plant[]>([])
 
 const fresh = computed(() => plants.value.filter((p) => p.unseen).length)
 
+async function loadPlants() {
+  const res = await fetch('/api/plants')
+  // A failed refresh keeps the garden on screen.
+  if (res.ok) plants.value = await res.json()
+}
+
 onMounted(async () => {
   const res = await fetch('/api/me')
   if (res.ok) {
     me.value = await res.json()
-    plants.value = await (await fetch('/api/plants')).json()
+    await loadPlants()
   }
   loading.value = false
 })
+// New nikki and badges show up without a reload.
+usePolling(() => me.value && loadPlants())
 </script>
 
 <template>
