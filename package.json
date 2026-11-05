@@ -11,6 +11,7 @@
     "type-check": "vue-tsc --build",
     "deploy": "npm run build && wrangler deploy",
     "cf-typegen": "wrangler types",
+    "users:create": "node scripts/create-users.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "run-s \"lint:*\"",

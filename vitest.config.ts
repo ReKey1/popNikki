@@ -33,6 +33,13 @@ export default defineConfig(async () => {
             setupFiles: ['./server/__tests__/apply-migrations.ts'],
           },
         },
+        {
+          test: {
+            name: 'scripts',
+            environment: 'node',
+            include: ['scripts/**/__tests__/*.test.ts'],
+          },
+        },
       ],
     },
   }

@@ -1,21 +1,24 @@
 import { describe, expect, it } from 'vitest'
 
-import app from '../index'
+import { request } from './helpers'
 
-describe('API', () => {
-  it('responds on /api/', async () => {
-    const res = await app.request('/api/')
-    expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ name: 'Cloudflare' })
-  })
-
+describe('app', () => {
   it('sends a no-referrer policy', async () => {
-    const res = await app.request('/api/')
+    const res = await request('/api/missing')
     expect(res.headers.get('Referrer-Policy')).toBe('no-referrer')
   })
 
   it('returns 404 for unknown API routes', async () => {
-    const res = await app.request('/api/missing')
+    const res = await request('/api/missing')
     expect(res.status).toBe(404)
+  })
+
+  it('rejects a cross-site form post', async () => {
+    const res = await request('/api/posts', {
+      method: 'POST',
+      headers: { Origin: 'https://evil.example' },
+      body: new URLSearchParams({ description: 'x' }),
+    })
+    expect(res.status).toBe(403)
   })
 })
