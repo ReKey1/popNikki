@@ -1,7 +1,10 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { goBack } from '@/lib/navigation'
 import CameraCapture from '../CameraCapture.vue'
+
+vi.mock('@/lib/navigation', () => ({ goBack: vi.fn<() => void>() }))
 
 const mountCamera = () => mount(CameraCapture, { global: { stubs: { RouterLink: true } } })
 
@@ -83,5 +86,12 @@ describe('CameraCapture', () => {
     Object.defineProperty(input.element, 'files', { value: [file] })
     await input.trigger('change')
     expect(wrapper.emitted('picked')).toEqual([[file]])
+  })
+
+  it('closes back to where it was opened from', async () => {
+    stubCamera(async () => fakeStream().stream)
+    const wrapper = mountCamera()
+    await wrapper.get('[aria-label="Close"]').trigger('click')
+    expect(goBack).toHaveBeenCalled()
   })
 })

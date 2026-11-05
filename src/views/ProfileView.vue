@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 
@@ -9,14 +10,21 @@ import BasePhoto from '@/components/BasePhoto.vue'
 import BasePill from '@/components/BasePill.vue'
 import HistoryRow from '@/components/HistoryRow.vue'
 import SettingsSheet from '@/components/SettingsSheet.vue'
-import { errorMessage, type Draft, type Me, type Post } from '@/lib/api'
+import { errorMessage, type Draft } from '@/lib/api'
 import { dayNumber, formatShortDate } from '@/lib/format'
+import { goBack } from '@/lib/navigation'
+import { useGardenStore } from '@/stores/garden'
+import { useSessionStore } from '@/stores/session'
 
 const router = useRouter()
+const session = useSessionStore()
+const garden = useGardenStore()
+// The router only opens this page for a logged-in viewer.
+const { me } = storeToRefs(session)
 
-const me = ref<Me | null>(null)
-const posts = ref<Post[]>([])
-const drafts = ref<Draft[]>([])
+// What the last visit saw shows at once, while the refresh below runs.
+const posts = computed(() => (me.value && garden.posts[me.value.id]?.posts) || [])
+const drafts = computed(() => garden.drafts ?? [])
 const tab = ref<'posted' | 'drafts'>('posted')
 const settingsOpen = ref(false)
 const error = ref('')
@@ -25,19 +33,8 @@ const firstAt = computed(() => posts.value[posts.value.length - 1]?.published_at
 const day = (at: number) => dayNumber(firstAt.value ?? at, at)
 
 onMounted(async () => {
-  const res = await fetch('/api/me')
-  if (!res.ok) {
-    await router.replace('/')
-    return
-  }
-  const user: Me = await res.json()
-  const [list, saved] = await Promise.all([
-    fetch(`/api/users/${user.id}/posts`),
-    fetch('/api/me/drafts'),
-  ])
-  posts.value = list.ok ? ((await list.json()) as { posts: Post[] }).posts : []
-  drafts.value = saved.ok ? await saved.json() : []
-  me.value = user
+  const user = await session.load()
+  if (user) await Promise.all([garden.loadPosts(user.id), garden.loadDrafts()])
 })
 
 async function remove(draft: Draft) {
@@ -47,14 +44,20 @@ async function remove(draft: Draft) {
     error.value = await errorMessage(res)
     return
   }
-  drafts.value = drafts.value.filter((d) => d.id !== draft.id)
+  garden.drafts = drafts.value.filter((d) => d.id !== draft.id)
+}
+
+async function loggedOut() {
+  session.reset()
+  garden.clear()
+  await router.push('/')
 }
 </script>
 
 <template>
   <template v-if="me">
     <header class="head">
-      <BaseIconButton label="Back" to="/">←</BaseIconButton>
+      <BaseIconButton label="Back" @click="goBack(router)">←</BaseIconButton>
       <h1 class="head__title mono-label">MY GARDEN</h1>
       <BaseIconButton tone="outline" label="Settings" @click="settingsOpen = true"
         >⚙</BaseIconButton
@@ -104,8 +107,7 @@ async function remove(draft: Draft) {
       <p v-if="error" class="error" role="alert">{{ error }}</p>
 
       <template v-if="tab === 'posted'">
-        <p v-if="!posts.length" class="empty">No nikki yet.</p>
-        <ul v-else class="grid">
+        <ul v-if="posts.length" class="grid">
           <li v-for="post in posts" :key="post.id">
             <RouterLink :to="`/plants/${me.id}`" class="grid__link">
               <BasePhoto
@@ -120,11 +122,14 @@ async function remove(draft: Draft) {
             </RouterLink>
           </li>
         </ul>
+        <p v-else-if="me && garden.posts[me.id]" class="empty">No nikki yet.</p>
       </template>
 
       <template v-else>
-        <p v-if="!drafts.length" class="empty">No drafts. Quitting a practice saves one here.</p>
-        <div v-else class="drafts">
+        <p v-if="garden.drafts && !drafts.length" class="empty">
+          No drafts. Quitting a practice saves one here.
+        </p>
+        <div v-else-if="drafts.length" class="drafts">
           <HistoryRow
             v-for="draft in drafts"
             :key="draft.id"
@@ -151,7 +156,7 @@ async function remove(draft: Draft) {
       v-model:open="settingsOpen"
       :username="me.username"
       @renamed="me = $event"
-      @logged-out="router.push('/')"
+      @logged-out="loggedOut"
     />
   </template>
 </template>

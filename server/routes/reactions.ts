@@ -26,6 +26,21 @@ reactions.put('/api/posts/:id{[0-9]+}/reaction', requireUser, async (c) => {
   return c.body(null, 204)
 })
 
+// Who reacted to a published post, oldest first.
+reactions.get('/api/posts/:id{[0-9]+}/reactions', requireUser, async (c) => {
+  const id = Number(c.req.param('id'))
+  const [post, list] = await c.env.DB.batch([
+    c.env.DB.prepare('SELECT 1 FROM posts WHERE id = ? AND published_at IS NOT NULL').bind(id),
+    c.env.DB.prepare(
+      `SELECT r.emoji, u.username FROM reactions r JOIN users u ON u.id = r.user_id
+       WHERE r.post_id = ? AND u.username IS NOT NULL AND u.revoked_at IS NULL
+       ORDER BY r.created_at, u.username`,
+    ).bind(id),
+  ])
+  if (!post!.results.length) return c.notFound()
+  return c.json(list!.results)
+})
+
 reactions.delete('/api/posts/:id{[0-9]+}/reaction', requireUser, async (c) => {
   await c.env.DB.prepare('DELETE FROM reactions WHERE post_id = ? AND user_id = ?')
     .bind(Number(c.req.param('id')), c.var.user.id)

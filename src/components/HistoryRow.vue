@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { RouterLink, type RouteLocationRaw } from 'vue-router'
+
 import BasePhoto from './BasePhoto.vue'
 
-const { card = false } = defineProps<{
+const { card = false, to } = defineProps<{
   day: number
   /** Short date or "SAVED …" stamp. */
   date: string
@@ -12,13 +14,19 @@ const { card = false } = defineProps<{
   meta?: string
   /** Raised card style used for drafts, with the text clamped to two lines. */
   card?: boolean
+  /** Makes the whole row a link, such as to the post's own page. */
+  to?: RouteLocationRaw
 }>()
 
 const slots = defineSlots<{ actions?(): unknown }>()
 </script>
 
 <template>
-  <article :class="['row', { 'row--card': card }]">
+  <component
+    :is="to ? RouterLink : 'article'"
+    v-bind="to ? { to } : {}"
+    :class="['row', { 'row--card': card, 'row--link': to }]"
+  >
     <BasePhoto :src :radius="12" stripe="sm" />
     <div class="row__body">
       <div class="row__date">DAY {{ day }} · {{ date }}</div>
@@ -26,10 +34,16 @@ const slots = defineSlots<{ actions?(): unknown }>()
       <div v-if="meta" class="row__meta">{{ meta }}</div>
       <div v-if="slots.actions" class="row__actions"><slot name="actions" /></div>
     </div>
-  </article>
+  </component>
 </template>
 
 <style scoped>
+.row--link,
+.row--link:hover {
+  color: inherit;
+  text-decoration: none;
+}
+
 .row {
   display: grid;
   grid-template-columns: 96px minmax(0, 1fr);

@@ -6,8 +6,10 @@ import BaseButton from '@/components/BaseButton.vue'
 import BaseTextField from '@/components/BaseTextField.vue'
 import BaseWordmark from '@/components/BaseWordmark.vue'
 import { errorMessage } from '@/lib/api'
+import { useSessionStore } from '@/stores/session'
 
 const router = useRouter()
+const session = useSessionStore()
 const username = ref('')
 const error = ref('')
 const sending = ref(false)
@@ -21,8 +23,11 @@ async function claim() {
     body: JSON.stringify({ username: username.value }),
   })
   sending.value = false
-  if (res.ok) await router.push('/')
-  else error.value = await errorMessage(res)
+  if (res.ok) {
+    // The claim logged you in: the next navigation asks the server who you are.
+    session.reset()
+    await router.push('/')
+  } else error.value = await errorMessage(res)
 }
 </script>
 

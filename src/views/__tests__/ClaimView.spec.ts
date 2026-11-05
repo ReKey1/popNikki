@@ -1,6 +1,8 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { testPinia } from '@/__tests__/helpers'
+import { useSessionStore } from '@/stores/session'
 import ClaimView from '../ClaimView.vue'
 
 const push = vi.fn<(to: string) => Promise<void>>()
@@ -20,7 +22,9 @@ describe('ClaimView', () => {
       async () => new Response(null, { status: 204 }),
     )
     vi.stubGlobal('fetch', fetch)
-    const wrapper = mount(ClaimView)
+    const wrapper = mount(ClaimView, { global: { plugins: [testPinia()] } })
+    const session = useSessionStore()
+    const reset = vi.spyOn(session, 'reset')
 
     await wrapper.find('input').setValue('nikki')
     await wrapper.find('form').trigger('submit')
@@ -28,6 +32,8 @@ describe('ClaimView', () => {
 
     expect(fetch).toHaveBeenCalledWith('/api/claim', expect.objectContaining({ method: 'POST' }))
     expect(JSON.parse(fetch.mock.calls[0]![1]!.body as string)).toEqual({ username: 'nikki' })
+    // The claim logged you in, so the session is fetched again on the way home.
+    expect(reset).toHaveBeenCalled()
     expect(push).toHaveBeenCalledWith('/')
   })
 
@@ -38,7 +44,7 @@ describe('ClaimView', () => {
         Response.json({ error: 'That name is taken' }, { status: 409 }),
       ),
     )
-    const wrapper = mount(ClaimView)
+    const wrapper = mount(ClaimView, { global: { plugins: [testPinia()] } })
 
     await wrapper.find('input').setValue('nikki')
     await wrapper.find('form').trigger('submit')

@@ -2,7 +2,10 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { stubApi } from '@/__tests__/helpers'
+import { leaveStep } from '@/lib/navigation'
 import PracticeView from '../PracticeView.vue'
+
+vi.mock('@/lib/navigation', () => ({ leaveStep: vi.fn<() => Promise<void>>() }))
 
 const mountPractice = () =>
   mount(PracticeView, { props: { id: '5' }, global: { stubs: { RouterLink: true } } })
@@ -111,5 +114,20 @@ describe('PracticeView', () => {
     await flushPromises()
     expect(wrapper.find('[role="alert"]').exists()).toBe(true)
     expect(playButton(wrapper).text()).toBe('START')
+  })
+
+  it('leaves without keeping the timer in the history', async () => {
+    const wrapper = mountPractice()
+    await wrapper.get('[aria-label="Quit"]').trigger('click')
+    expect(leaveStep).toHaveBeenLastCalledWith(undefined, '/me')
+
+    stubApi({ '/api/posts/5/start': Response.json({ published: true }) })
+    await playButton(wrapper).trigger('click')
+    await flushPromises()
+    const done = wrapper.findAll('.done button')
+    await done.find((b) => b.text().startsWith('SEE THE GARDEN'))!.trigger('click')
+    expect(leaveStep).toHaveBeenLastCalledWith(undefined, '/')
+    await done.find((b) => b.text() === 'My garden')!.trigger('click')
+    expect(leaveStep).toHaveBeenLastCalledWith(undefined, '/me')
   })
 })

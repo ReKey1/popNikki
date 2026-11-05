@@ -86,4 +86,43 @@ describe('reactions', () => {
       expect.objectContaining({ reactions: { '💧': 1 }, my_reaction: null }),
     ])
   })
+
+  describe('who reacted', () => {
+    const reactors = (id: number, as = cookie) =>
+      request(`/api/posts/${id}/reactions`, { headers: { Cookie: as } })
+    const addReaction = (userId: number, emoji: string, at: number) =>
+      db
+        .prepare('INSERT INTO reactions (post_id, user_id, emoji, created_at) VALUES (?, ?, ?, ?)')
+        .bind(postId, userId, emoji, at)
+        .run()
+
+    it('needs a session', async () => {
+      expect((await reactors(postId, '')).status).toBe(401)
+    })
+
+    it('lists names and emoji, oldest first, without revoked members', async () => {
+      const gone = await addUser('gone', { revoked: true })
+      const bob = await db
+        .prepare("SELECT id FROM users WHERE username = 'bob'")
+        .first<{ id: number }>()
+      await addReaction(bob!.id, '💧', 300)
+      await addReaction(ownerId, '🔥', 100)
+      await addReaction(gone.id, '🌱', 200)
+
+      const res = await reactors(postId)
+      expect(res.status).toBe(200)
+      expect(await res.json()).toEqual([
+        { emoji: '🔥', username: 'nikki' },
+        { emoji: '💧', username: 'bob' },
+      ])
+    })
+
+    it('returns 404 for a missing or unpublished post', async () => {
+      const draft = await db
+        .prepare('INSERT INTO posts (user_id, created_at) VALUES (?, ?) RETURNING id')
+        .bind(ownerId, Date.now())
+        .first<{ id: number }>()
+      for (const id of [999, draft!.id]) expect((await reactors(id)).status).toBe(404)
+    })
+  })
 })

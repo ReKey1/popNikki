@@ -1,6 +1,8 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 
+import { testRouter } from '@/__tests__/helpers'
+
 import BaseAvatar from '../BaseAvatar.vue'
 import BaseInfoNote from '../BaseInfoNote.vue'
 import BasePhoto from '../BasePhoto.vue'
@@ -74,6 +76,17 @@ describe('HistoryRow', () => {
     expect(wrapper.text()).toContain('🔥 4')
     expect(wrapper.find('button').exists()).toBe(true)
     expect(wrapper.classes()).toContain('row--card')
+    expect(wrapper.element.tagName).toBe('ARTICLE')
+  })
+
+  it('becomes a link to the post when given a route', () => {
+    const wrapper = mount(HistoryRow, {
+      props: { day: 3, date: 'NOV 2', text: 'Sprout', to: '/plants/2/4' },
+      global: { plugins: [testRouter()] },
+    })
+    expect(wrapper.element.tagName).toBe('A')
+    expect(wrapper.attributes('href')).toBe('/plants/2/4')
+    expect(wrapper.text()).toContain('Sprout')
   })
 })
 
