@@ -226,8 +226,7 @@ describe('PlantView', () => {
     expect(pills(wrapper)).toEqual(['💧 6', '🔥 2'])
   })
 
-  it('shows who reacted when the counts are held', async () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  it('shows who reacted when the counts are tapped', async () => {
     stubDialog()
     const { fetch, wrapper } = await mountPlant({
       '/api/posts/9/reactions': Response.json([
@@ -236,9 +235,9 @@ describe('PlantView', () => {
       ]),
     })
 
-    await wrapper.get('.featured__counts').trigger('pointerdown')
-    expect(fetch).not.toHaveBeenCalledWith('/api/posts/9/reactions')
-    vi.advanceTimersByTime(500)
+    const counts = wrapper.get('.featured__counts')
+    expect(counts.element.tagName).toBe('BUTTON')
+    await counts.trigger('click')
     await flushPromises()
 
     expect(fetch).toHaveBeenCalledWith('/api/posts/9/reactions')
@@ -250,14 +249,11 @@ describe('PlantView', () => {
     expect(dialog.find('.sheet__grip').exists()).toBe(true)
   })
 
-  it('opens who reacted from the keyboard too', async () => {
-    stubDialog()
-    const { wrapper } = await mountPlant({
-      '/api/posts/9/reactions': Response.json([{ emoji: '💧', username: 'nikki' }]),
-    })
-    await wrapper.get('.featured__counts').trigger('keydown', { key: 'Enter' })
-    await flushPromises()
-    expect(wrapper.get('dialog').attributes('open')).toBeDefined()
+  it('downloads the full-size photo of the nikki shown large', async () => {
+    const { wrapper } = await mountPlant({}, { postId: '4' })
+    const link = wrapper.get('.featured__download')
+    expect(link.attributes('href')).toBe('/api/posts/4/photo')
+    expect(link.attributes('download')).toBe('けんじ-day-1.jpg')
   })
 
   it('goes back to the previous page, or home when opened directly', async () => {

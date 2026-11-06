@@ -26,14 +26,14 @@ describe('CameraCapture', () => {
     vi.restoreAllMocks()
   })
 
-  it('opens the back camera and stops it on unmount', async () => {
+  it('opens the back camera at its sharpest size and stops it on unmount', async () => {
     const { track, stream } = fakeStream()
     const getUserMedia = stubCamera(async () => stream)
     const wrapper = mountCamera()
     await flushPromises()
 
     expect(getUserMedia).toHaveBeenCalledWith({
-      video: { facingMode: 'environment' },
+      video: { facingMode: 'environment', width: { ideal: 4096 }, height: { ideal: 4096 } },
       audio: false,
     })
     expect(wrapper.get('video').element.srcObject).toBe(stream)
@@ -52,7 +52,10 @@ describe('CameraCapture', () => {
     await wrapper.get('button[aria-label="Flip camera"]').trigger('click')
     await flushPromises()
     expect(first.track.stop).toHaveBeenCalled()
-    expect(getUserMedia).toHaveBeenLastCalledWith({ video: { facingMode: 'user' }, audio: false })
+    expect(getUserMedia).toHaveBeenLastCalledWith({
+      video: expect.objectContaining({ facingMode: 'user' }),
+      audio: false,
+    })
   })
 
   it('emits a JPEG of the current frame', async () => {
@@ -71,7 +74,7 @@ describe('CameraCapture', () => {
     expect(wrapper.emitted('picked')).toEqual([[photo]])
   })
 
-  it('falls back to the library picker without a camera', async () => {
+  it("offers the phone's own camera, which still works without camera access", async () => {
     stubCamera(async () => {
       throw new DOMException('denied', 'NotAllowedError')
     })
@@ -83,6 +86,8 @@ describe('CameraCapture', () => {
 
     const file = new File(['x'], 'leaf.jpg', { type: 'image/jpeg' })
     const input = wrapper.get('input[type="file"]')
+    expect(input.attributes('capture')).toBe('environment')
+    expect(input.attributes('accept')).toBe('image/*')
     Object.defineProperty(input.element, 'files', { value: [file] })
     await input.trigger('change')
     expect(wrapper.emitted('picked')).toEqual([[file]])

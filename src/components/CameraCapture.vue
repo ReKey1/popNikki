@@ -3,7 +3,6 @@ import { onBeforeUnmount, onMounted, ref, shallowRef, useTemplateRef, watch } fr
 import { useRouter } from 'vue-router'
 
 import BaseIconButton from './BaseIconButton.vue'
-import BasePhoto from './BasePhoto.vue'
 import { goBack } from '@/lib/navigation'
 
 const emit = defineEmits<{ picked: [photo: Blob] }>()
@@ -15,6 +14,16 @@ const stream = shallowRef<MediaStream | null>(null)
 const unavailable = ref(false)
 let unmounted = false
 
+/**
+ * Without a size, browsers open the camera at 640×480. Asking for a large ideal size picks the
+ * sharpest mode the camera has; `ideal` never fails, so smaller cameras still open.
+ */
+const constraints = (facingMode: 'environment' | 'user'): MediaTrackConstraints => ({
+  facingMode,
+  width: { ideal: 4096 },
+  height: { ideal: 4096 },
+})
+
 function stop() {
   stream.value?.getTracks().forEach((track) => track.stop())
   stream.value = null
@@ -24,7 +33,7 @@ async function start() {
   stop()
   try {
     const media = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: facing.value },
+      video: constraints(facing.value),
       audio: false,
     })
     // The page may have closed while the permission prompt was open.
@@ -36,7 +45,7 @@ async function start() {
     unavailable.value = false
     if (video.value) video.value.srcObject = media
   } catch {
-    // No camera, permission denied, or not a secure context: the library picker still works.
+    // No camera, permission denied, or not a secure context: the phone's own camera still works.
     unavailable.value = true
   }
 }
@@ -83,7 +92,7 @@ function pick(event: Event) {
         muted
       ></video>
       <p v-if="unavailable" class="finder__note">
-        No camera here. Pick a photo from your library instead.
+        No camera here. Use your phone's camera app instead.
       </p>
       <template v-else>
         <span class="finder__hint">CENTER YOUR PLANT</span>
@@ -98,10 +107,26 @@ function pick(event: Event) {
     <div class="mode mono-label"><span class="mode__dot" aria-hidden="true"></span>PHOTO</div>
 
     <div class="controls">
-      <label class="library">
-        <BasePhoto ratio="1/1" :radius="12" stripe="sm" night />
-        <span class="visually-hidden">Choose from library</span>
-        <input type="file" accept="image/*" class="visually-hidden" @change="pick" />
+      <!-- `capture` opens the phone's own camera app, which takes full-resolution photos. -->
+      <label class="native">
+        <svg class="native__icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path
+            d="M4 8h3l2-3h6l2 3h3v11H4z"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linejoin="round"
+          />
+          <circle cx="12" cy="13" r="3.5" fill="none" stroke="currentColor" stroke-width="1.8" />
+        </svg>
+        <span class="visually-hidden">Use the phone camera</span>
+        <input
+          type="file"
+          accept="image/*"
+          capture="environment"
+          class="visually-hidden"
+          @change="pick"
+        />
       </label>
       <button
         type="button"
@@ -259,15 +284,30 @@ function pick(event: Event) {
   padding: 12px 36px max(40px, env(safe-area-inset-bottom));
 }
 
-.library {
+.native {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--on-night-soft);
+  color: var(--on-night);
   cursor: pointer;
 }
 
-.library:focus-within {
+.native:active {
+  transform: scale(0.92);
+}
+
+.native:focus-within {
   outline: 2px solid var(--orange);
   outline-offset: 2px;
-  border-radius: 12px;
+}
+
+.native__icon {
+  width: 24px;
+  height: 24px;
 }
 
 .shutter {

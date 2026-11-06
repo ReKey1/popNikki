@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { onLongPress } from '@vueuse/core'
-import { computed, ref, useTemplateRef, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 import BaseAvatar from '@/components/BaseAvatar.vue'
@@ -79,10 +78,9 @@ async function react(post: Post, emoji: string | null) {
   if (!res.ok) error.value = await errorMessage(res)
 }
 
-// Holding the counts shows who reacted.
+// Tapping the counts shows who reacted.
 const reactorsOpen = ref(false)
 const reactors = ref<Reactor[]>([])
-const countsRow = useTemplateRef<HTMLElement>('countsRow')
 
 async function showReactors() {
   const post = featured.value
@@ -95,7 +93,6 @@ async function showReactors() {
   reactors.value = await res.json()
   reactorsOpen.value = true
 }
-onLongPress(countsRow, showReactors)
 </script>
 
 <template>
@@ -131,16 +128,12 @@ onLongPress(countsRow, showReactors)
           />
         </BasePhoto>
         <p v-if="error" class="featured__error" role="alert">{{ error }}</p>
-        <div
+        <button
           v-if="counts(featured).length"
-          ref="countsRow"
+          type="button"
           class="featured__counts"
-          role="button"
-          tabindex="0"
-          aria-label="Hold to see who reacted"
-          @contextmenu.prevent
-          @keydown.enter.prevent="showReactors"
-          @keydown.space.prevent="showReactors"
+          aria-label="See who reacted"
+          @click="showReactors"
         >
           <BasePill
             v-for="[emoji, n] in counts(featured)"
@@ -149,8 +142,17 @@ onLongPress(countsRow, showReactors)
             :selected="emoji === featured.my_reaction"
             >{{ emoji }} {{ n }}</BasePill
           >
+        </button>
+        <div class="featured__meta">
+          <span class="mono-label">{{ formatStamp(featured.published_at) }}</span>
+          <!-- Saves the stored photo, the largest size there is. -->
+          <a
+            :href="`/api/posts/${featured.id}/photo`"
+            :download="`${data.owner.username}-day-${day(featured.published_at)}.jpg`"
+            class="featured__download mono-label"
+            >DOWNLOAD ↓</a
+          >
         </div>
-        <div class="featured__stamp mono-label">{{ formatStamp(featured.published_at) }}</div>
         <p v-if="featured.description" class="featured__text">{{ featured.description }}</p>
       </article>
 
@@ -243,31 +245,45 @@ onLongPress(countsRow, showReactors)
 
 .featured__counts {
   display: flex;
-  -webkit-touch-callout: none;
-  -webkit-user-select: none;
-  user-select: none;
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 40px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
 }
 
-.featured__stamp {
+.featured__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   margin-top: 20px;
   letter-spacing: 0.08em;
   color: var(--ink-4);
 }
 
-.featured__counts + .featured__stamp,
-.featured__error + .featured__stamp {
-  margin-top: 20px;
+.featured__photo + .featured__meta {
+  margin-top: 48px;
 }
 
-.featured__photo + .featured__stamp {
-  margin-top: 48px;
+.featured__download {
+  /* A taller hit area without moving the row. */
+  margin: -12px 0;
+  padding: 12px 0;
+  color: var(--moss);
+  text-decoration: none;
 }
 
 .featured__text {
   margin: 8px 0 0;
+  /* Descriptions are the one thing in the app you can select and copy. */
+  -webkit-touch-callout: default;
+  -webkit-user-select: text;
+  user-select: text;
   font: var(--type-post);
   text-wrap: pretty;
   white-space: pre-line;
