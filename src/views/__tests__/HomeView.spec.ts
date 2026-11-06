@@ -53,7 +53,7 @@ describe('HomeView', () => {
     const wrapper = mountHome()
     await flushPromises()
 
-    expect(wrapper.text()).toContain('2 plants,growing on beat.')
+    expect(wrapper.get('.intro__headline').text()).toBe('2 plants')
     expect(wrapper.text()).toContain('1 FRESH')
     const tiles = wrapper.findAll('li')
     expect(tiles).toHaveLength(2)
@@ -114,7 +114,7 @@ describe('HomeView', () => {
     const again = mount(HomeView, { global: { plugins: [getActivePinia()!, testRouter()] } })
     expect(again.text()).not.toContain('LOADING')
     expect(again.findAll('li')).toHaveLength(1)
-    expect(again.text()).toContain('1 plant,growing on beat.')
+    expect(again.get('.intro__headline').text()).toBe('1 plant')
   })
 
   it('fetches every plant’s nikki ahead, once', async () => {

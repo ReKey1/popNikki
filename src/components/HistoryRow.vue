@@ -3,7 +3,11 @@ import { RouterLink, type RouteLocationRaw } from 'vue-router'
 
 import BasePhoto from './BasePhoto.vue'
 
-const { card = false, to } = defineProps<{
+const {
+  card = false,
+  current = false,
+  to,
+} = defineProps<{
   day: number
   /** Short date or "SAVED …" stamp. */
   date: string
@@ -16,6 +20,8 @@ const { card = false, to } = defineProps<{
   card?: boolean
   /** Makes the whole row a link, such as to the post's own page. */
   to?: RouteLocationRaw
+  /** Marks the row of the post shown on the page right now. */
+  current?: boolean
 }>()
 
 const slots = defineSlots<{ actions?(): unknown }>()
@@ -25,7 +31,8 @@ const slots = defineSlots<{ actions?(): unknown }>()
   <component
     :is="to ? RouterLink : 'article'"
     v-bind="to ? { to } : {}"
-    :class="['row', { 'row--card': card, 'row--link': to }]"
+    :class="['row', { 'row--card': card, 'row--link': to, 'row--current': current }]"
+    :aria-current="current ? 'true' : undefined"
   >
     <BasePhoto :src :radius="12" stripe="sm" />
     <div class="row__body">
@@ -50,6 +57,15 @@ const slots = defineSlots<{ actions?(): unknown }>()
   gap: 14px;
   padding: 14px 0;
   border-bottom: var(--border-hair);
+}
+
+.row--current {
+  margin: 0 -10px;
+  padding: 14px 10px;
+  border-bottom-color: transparent;
+  border-radius: var(--radius-lg);
+  background: var(--moss-mist);
+  box-shadow: inset 3px 0 0 var(--moss);
 }
 
 .row--card {

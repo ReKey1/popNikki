@@ -54,8 +54,7 @@ usePolling(() => me.value && refresh())
         <div>
           <div class="intro__kicker mono-label">THE GARDEN</div>
           <h2 class="intro__headline">
-            {{ plants.length }} {{ plants.length === 1 ? 'plant' : 'plants' }},<br />growing on
-            beat.
+            {{ plants.length }} {{ plants.length === 1 ? 'plant' : 'plants' }}
           </h2>
         </div>
         <BasePill v-if="fresh" tone="orange" class="intro__fresh">{{ fresh }} FRESH</BasePill>

@@ -108,6 +108,13 @@ describe('TimerRing', () => {
         .text(),
     ).toBe('0:00')
   })
+
+  it('caps its width at size and shrinks with the screen', () => {
+    const style = mount(TimerRing, { props: { remaining: 60, size: 200 } })
+      .get('.ring')
+      .attributes('style')
+    expect(style).toContain('min(200px, 70vw, 42dvh)')
+  })
 })
 
 describe('static pieces', () => {

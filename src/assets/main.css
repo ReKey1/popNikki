@@ -7,12 +7,41 @@
   box-sizing: border-box;
 }
 
+/* Pages and panels still scroll, but no scroll bar ever shows. */
+* {
+  scrollbar-width: none;
+}
+
+::-webkit-scrollbar {
+  display: none;
+}
+
 body {
   margin: 0;
   background: var(--paper);
   color: var(--ink);
   font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
+
+  /* Nothing is selectable, and holding an image or link opens no menu.
+     Post descriptions opt back in where they are shown. */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Images and icons can't be dragged out either. */
+img,
+svg {
+  -webkit-user-drag: none;
+}
+
+/* Typing still needs a caret and selection: Safari breaks fields that inherit `none`. */
+input,
+textarea {
+  -webkit-touch-callout: default;
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 a {
