@@ -18,13 +18,15 @@ npm run type-check
 
 ## Add a dance track
 
-Only upload a track the owner has confirmed permission for, and keep that record outside the repo. Upload the audio to R2, then add a row to D1. Drop `--remote` (and use `--local`) to try it on the dev server.
+Only upload a track the owner has confirmed permission for, and keep that record outside the repo.
+
+Put `.mp3` (or `.m4a`) files in `music/`, which is gitignored. The file name becomes the title, so `music/Golden Hour.mp3` plays as "Golden Hour". Any length works: the music fades in, fades out at two minutes, and loops if the song is shorter. Then run:
 
 ```sh
-npx wrangler r2 object put popnikki-files/tracks/<file>.mp3 --file <path/to/file>.mp3 --content-type audio/mpeg --remote
-npx wrangler d1 execute popnikki --remote --command "INSERT INTO tracks (title, r2_key) VALUES ('<Title>', 'tracks/<file>.mp3')"
+npm run tracks:add               # local, for the dev server
+npm run tracks:add -- --remote   # production
 ```
 
-With no tracks, the server publishes a post as soon as its practice starts.
+It uploads each file to R2 and adds it to the `tracks` table. Running it again re-uploads the files but doesn't add duplicates. With no tracks, the server publishes a post as soon as its practice starts.
 
 See [plant-platform-plan.md](plant-platform-plan.md) for the design and [CLAUDE.md](CLAUDE.md) for project conventions.

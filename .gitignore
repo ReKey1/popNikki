@@ -49,6 +49,9 @@ __screenshots__/
 secrets/
 tags/
 
+# Dance tracks (recordings must never be committed)
+music/
+
 # Personal Claude Code settings
 .claude/settings.local.json
 

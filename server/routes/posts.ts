@@ -2,13 +2,12 @@ import { Hono, type Context } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 
 import { requireUser, type AppEnv } from '../lib/session'
+import { pickTrack } from './tracks'
 
 const MB = 1024 * 1024
 export const LIMITS = { photo: 3 * MB, thumb: 512 * 1024, description: 1000 }
 /** How long the dance lasts before a post can be published. */
 export const DANCE_MS = 120_000
-/** How many of the dancer's latest tracks to avoid when picking the next one. */
-const RECENT_TRACKS = 3
 
 const posts = new Hono<AppEnv>()
 
@@ -172,23 +171,20 @@ posts.delete('/api/posts/:id{[0-9]+}', requireUser, async (c) => {
   return c.body(null, 204)
 })
 
-// Starts the music: picks a track the dancer hasn't had lately and starts the server-side clock.
+// Starts the music and the server-side clock. The body may name the track the page has already
+// loaded (from GET /api/tracks/next); otherwise, or if it's gone, one is picked here.
 // With no tracks on the playlist there is nothing to dance to, so the post is published at once.
 posts.post('/api/posts/:id{[0-9]+}/start', requireUser, async (c) => {
   const draft = await ownDraft(c)
   if (!draft) return c.notFound()
 
-  const track = await c.env.DB.prepare(
-    `SELECT id, title FROM tracks
-     ORDER BY id IN (
-       SELECT track_id FROM posts
-       WHERE user_id = ? AND track_id IS NOT NULL AND music_started_at IS NOT NULL
-       ORDER BY music_started_at DESC LIMIT ?
-     ), RANDOM()
-     LIMIT 1`,
-  )
-    .bind(c.var.user.id, RECENT_TRACKS)
-    .first<{ id: number; title: string }>()
+  const body = await c.req.json<{ track_id?: unknown }>().catch(() => null)
+  const chosen = Number.isInteger(body?.track_id)
+    ? await c.env.DB.prepare('SELECT id, title FROM tracks WHERE id = ?')
+        .bind(body!.track_id)
+        .first<{ id: number; title: string }>()
+    : null
+  const track = chosen ?? (await pickTrack(c.env.DB, c.var.user.id))
 
   const now = Date.now()
   if (!track) {

@@ -1,8 +1,9 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { stubApi } from '@/__tests__/helpers'
+import { stubApi, testPinia } from '@/__tests__/helpers'
 import CameraCapture from '@/components/CameraCapture.vue'
+import { usePendingPostStore } from '@/stores/pendingPost'
 import NewPostView from '../NewPostView.vue'
 
 const replace = vi.fn<(to: string) => Promise<void>>()
@@ -28,6 +29,7 @@ async function mountWithPhoto() {
 
 describe('NewPostView', () => {
   beforeEach(() => {
+    testPinia()
     vi.stubGlobal('URL', {
       ...URL,
       createObjectURL: () => 'blob:preview',
@@ -47,7 +49,7 @@ describe('NewPostView', () => {
     expect(wrapper.find('form').exists()).toBe(false)
   })
 
-  it('uploads a draft and starts the practice', async () => {
+  it('opens the practice at once and uploads in the background', async () => {
     const fetch = stubApi({ '/api/posts': Response.json({ id: 5 }, { status: 201 }) })
     const wrapper = await mountWithPhoto()
     expect(wrapper.get('img').attributes('src')).toBe('blob:preview')
@@ -55,14 +57,14 @@ describe('NewPostView', () => {
 
     await wrapper.get('textarea').setValue('first leaf')
     await wrapper.get('form').trigger('submit')
-    await flushPromises()
+    // The practice takes the upload page's place in the history.
+    expect(replace).toHaveBeenCalledWith('/practice')
+    expect(await usePendingPostStore().upload).toBe(5)
 
     const form = fetch.mock.calls[0]![1]!.body as FormData
     expect(form.get('description')).toBe('first leaf')
     expect(form.get('photo')).toBeInstanceOf(Blob)
     expect(form.get('thumb')).toBeInstanceOf(Blob)
-    // The practice takes the upload page's place in the history.
-    expect(replace).toHaveBeenCalledWith('/practice/5')
   })
 
   const saveDraft = async () => {
@@ -97,10 +99,13 @@ describe('NewPostView', () => {
     expect(wrapper.findComponent(CameraCapture).exists()).toBe(true)
   })
 
-  it('shows an upload error', async () => {
+  it('shows an error when saving to drafts fails', async () => {
     stubApi({ '/api/posts': Response.json({ error: 'Upload is too large' }, { status: 413 }) })
     const wrapper = await mountWithPhoto()
-    await wrapper.get('form').trigger('submit')
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Save to drafts')!
+      .trigger('click')
     await flushPromises()
     expect(wrapper.get('[role="alert"]').text()).toBe('Upload is too large')
     expect(replace).not.toHaveBeenCalled()
