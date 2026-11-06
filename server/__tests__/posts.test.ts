@@ -286,6 +286,29 @@ describe('posts', () => {
       expect((await row(id))!.music_started_at).toBeGreaterThan(0)
     })
 
+    it('plays the track the page already loaded, or picks one if it is gone', async () => {
+      await addTrack('a')
+      const chosen = await addTrack('b')
+      const start = async (trackId: number) => {
+        const { id } = await draft()
+        const res = await request(`/api/posts/${id}/start`, {
+          method: 'POST',
+          headers: {
+            Cookie: cookie,
+            Origin: 'http://localhost',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ track_id: trackId }),
+        })
+        return { id, body: await res.json<{ track: { id: number } }>() }
+      }
+      const { id, body } = await start(chosen)
+      expect(body.track.id).toBe(chosen)
+      expect(await row(id)).toMatchObject({ track_id: chosen })
+
+      expect((await start(9999)).body.track.id).toBeGreaterThan(0)
+    })
+
     it('avoids your three most recent tracks', async () => {
       const ids = [
         await addTrack('a'),

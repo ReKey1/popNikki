@@ -70,7 +70,7 @@ The project was scaffolded with Cloudflare's official tool (`npm create cloudfla
 
 ## Security and privacy
 
-The **repo is public.** Never commit tag tokens, tag URLs, provisioning output (`secrets/` and `tags/` are gitignored), `.dev.vars`, real photos or user data. Real secrets go in `wrangler secret`.
+The **repo is public.** Never commit tag tokens, tag URLs, provisioning output (`secrets/` and `tags/` are gitignored), music files (`music/` is gitignored), `.dev.vars`, real photos or user data. Real secrets go in `wrangler secret`.
 
 - **Login tokens:** store only SHA-256 hashes of tag tokens and session tokens. `/tag?t=` must always redirect, so the token leaves the address bar. Unknown or revoked tokens return a generic 404.
 - **Referrer policy:** `Referrer-Policy: no-referrer` is set by `hono/secure-headers` in `server/index.ts`.

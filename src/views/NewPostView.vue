@@ -8,12 +8,13 @@ import BaseInfoNote from '@/components/BaseInfoNote.vue'
 import BasePhoto from '@/components/BasePhoto.vue'
 import BaseTextField from '@/components/BaseTextField.vue'
 import CameraCapture from '@/components/CameraCapture.vue'
-import { errorMessage } from '@/lib/api'
+import { createPost } from '@/lib/api'
 import { formatStamp } from '@/lib/format'
-import { resizeToJpeg } from '@/lib/image'
 import { leaveStep } from '@/lib/navigation'
+import { usePendingPostStore } from '@/stores/pendingPost'
 
 const router = useRouter()
+const pending = usePendingPostStore()
 const photo = ref<Blob | null>(null)
 const takenAt = ref(0)
 const description = ref('')
@@ -35,25 +36,24 @@ function picked(blob: Blob) {
   takenAt.value = Date.now()
 }
 
-/** Uploads the draft, then either starts the practice or keeps it in your drafts. */
-async function send(practice: boolean) {
+/**
+ * Opens the practice at once and uploads in the background, so the song can load meanwhile.
+ * The upload page is a step, not a page: Back from what comes next skips it.
+ */
+async function practice() {
+  if (!photo.value) return
+  void pending.start(photo.value, description.value).catch(() => {})
+  await router.replace('/practice')
+}
+
+/** Uploads the draft, then opens your drafts. */
+async function saveDraft() {
   if (!photo.value) return
   sending.value = true
   error.value = ''
   try {
-    const form = new FormData()
-    form.append('photo', await resizeToJpeg(photo.value, 1600), 'photo.jpg')
-    form.append('thumb', await resizeToJpeg(photo.value, 400), 'thumb.jpg')
-    form.append('description', description.value)
-    const res = await fetch('/api/posts', { method: 'POST', body: form })
-    if (!res.ok) {
-      error.value = await errorMessage(res)
-      return
-    }
-    const { id } = (await res.json()) as { id: number }
-    // The upload page is a step, not a page: Back from what comes next skips it.
-    if (practice) await router.replace(`/practice/${id}`)
-    else await leaveStep(router, '/me')
+    await createPost(photo.value, description.value)
+    await leaveStep(router, '/me')
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err)
   } finally {
@@ -65,7 +65,7 @@ async function send(practice: boolean) {
 <template>
   <CameraCapture v-if="!photo" @picked="picked" />
 
-  <form v-else class="upload" @submit.prevent="send(true)">
+  <form v-else class="upload" @submit.prevent="practice">
     <header class="head">
       <BaseIconButton label="Back to camera" @click="photo = null">←</BaseIconButton>
       <h1 class="head__title">NEW NIKKI</h1>
@@ -93,10 +93,10 @@ async function send(practice: boolean) {
 
     <div class="dock">
       <BaseButton type="submit" :disabled="sending">
-        {{ sending ? 'UPLOADING…' : 'UPLOAD & PRACTICE' }}
+        UPLOAD & PRACTICE
         <template #trailing>→</template>
       </BaseButton>
-      <BaseButton variant="secondary" size="sm" :disabled="sending" @click="send(false)"
+      <BaseButton variant="secondary" size="sm" :disabled="sending" @click="saveDraft"
         >Save to drafts</BaseButton
       >
     </div>

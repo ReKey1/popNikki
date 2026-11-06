@@ -2,7 +2,32 @@ import { Hono } from 'hono'
 
 import { requireUser, type AppEnv } from '../lib/session'
 
+/** How many of the dancer's latest tracks to avoid when picking the next one. */
+const RECENT_TRACKS = 3
+
+/** A random track, avoiding the dancer's latest few where possible. Null when there are none. */
+export function pickTrack(db: D1Database, userId: number) {
+  return db
+    .prepare(
+      `SELECT id, title FROM tracks
+       ORDER BY id IN (
+         SELECT track_id FROM posts
+         WHERE user_id = ? AND track_id IS NOT NULL AND music_started_at IS NOT NULL
+         ORDER BY music_started_at DESC LIMIT ?
+       ), RANDOM()
+       LIMIT 1`,
+    )
+    .bind(userId, RECENT_TRACKS)
+    .first<{ id: number; title: string }>()
+}
+
 const tracks = new Hono<AppEnv>()
+
+// Picks the song for the next practice, so the page can load it before the dancer taps start.
+// The clock only starts with POST /api/posts/:id/start.
+tracks.get('/api/tracks/next', requireUser, async (c) => {
+  return c.json({ track: await pickTrack(c.env.DB, c.var.user.id) })
+})
 
 /** The `bytes start-end/size` value of a Content-Range header for an R2 range. */
 function contentRange(range: R2Range, size: number): string {

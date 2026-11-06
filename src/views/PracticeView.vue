@@ -5,31 +5,70 @@ import { useRouter } from 'vue-router'
 import BaseButton from '@/components/BaseButton.vue'
 import BaseIconButton from '@/components/BaseIconButton.vue'
 import TimerRing from '@/components/TimerRing.vue'
-import { errorMessage, type StartResult } from '@/lib/api'
+import { errorMessage, type StartResult, type Track } from '@/lib/api'
 import { leaveStep } from '@/lib/navigation'
+import { usePendingPostStore } from '@/stores/pendingPost'
 
-const props = defineProps<{ id: string }>()
+/** Without an id, the post is still uploading in the background (see NewPostView). */
+const props = defineProps<{ id?: string }>()
 const router = useRouter()
+const pending = usePendingPostStore()
 
 /** The client clock only drives the display. The server checks the real two minutes. */
 const TOTAL = 120
+/** Seconds the music takes to fade in, and to fade out so it's silent when the timer ends. */
+const FADE_IN = 1.5
+const FADE_OUT = 3
 
 const phase = ref<'ready' | 'starting' | 'running' | 'paused' | 'publishing' | 'done'>('ready')
 const remaining = ref(TOTAL)
-const track = ref<{ id: number; title: string } | null>(null)
+const track = ref<Track | null>(null)
 const error = ref('')
+/** The draft being danced out; null until its upload finishes. */
+const postId = ref(props.id ? Number(props.id) : null)
+const uploadFailed = ref(false)
 const audio = useTemplateRef<HTMLAudioElement>('audio')
 
 let timer: ReturnType<typeof setInterval> | undefined
 let lastTick = 0
 let wakeLock: WakeLockSentinel | null = null
 let retried = false
+let mixer: { ctx: AudioContext; gain: AudioParam } | null = null
+let fadingOut = false
+
+/**
+ * Routes the music through a gain node: iPhone Safari ignores `audio.volume`, so this is the
+ * only way to fade there. Call it from the tap, since browsers only start audio on a gesture.
+ */
+function connectMixer() {
+  if (mixer || !audio.value || typeof AudioContext === 'undefined') return
+  // Web Audio obeys the iPhone silent switch unless the session is marked as playback.
+  const session = (navigator as Navigator & { audioSession?: { type: string } }).audioSession
+  if (session) session.type = 'playback'
+  const ctx = new AudioContext()
+  const node = ctx.createGain()
+  ctx.createMediaElementSource(audio.value).connect(node).connect(ctx.destination)
+  mixer = { ctx, gain: node.gain }
+}
+
+/** Ramps the music's volume from `from` (default: where it is now) to `volume` over `seconds`. */
+function fadeTo(volume: number, seconds: number, from = mixer?.gain.value ?? 1) {
+  if (!mixer) return
+  const now = mixer.ctx.currentTime
+  mixer.gain.cancelScheduledValues(now)
+  mixer.gain.setValueAtTime(from, now)
+  mixer.gain.linearRampToValueAtTime(volume, now + seconds)
+}
 
 function tick() {
   const now = Date.now()
   remaining.value = Math.max(0, remaining.value - (now - lastTick) / 1000)
   lastTick = now
   if (remaining.value === 0) void finish()
+  else if (remaining.value <= FADE_OUT && !fadingOut) {
+    fadingOut = true
+    fadeTo(0, remaining.value)
+  }
 }
 
 async function run() {
@@ -37,6 +76,11 @@ async function run() {
   lastTick = Date.now()
   clearInterval(timer)
   timer = setInterval(tick, 250)
+  if (mixer) {
+    void mixer.ctx.resume()
+    fadingOut = false
+    fadeTo(1, FADE_IN, 0)
+  }
   // Without a user gesture the browser may refuse to play; RESUME is a fresh gesture.
   const playing = audio.value?.play().catch(() => pause())
   // Keep the screen on where the browser supports it.
@@ -53,10 +97,45 @@ function pause() {
   wakeLock = null
 }
 
+/** Waits for the background upload, then gives the page the post's own address. */
+async function waitForUpload(upload: Promise<number> | null) {
+  // Opened without an upload, e.g. after a reload: any finished upload is in the drafts.
+  if (!upload) return leaveStep(router, '/me')
+  uploadFailed.value = false
+  error.value = ''
+  try {
+    postId.value = await upload
+    pending.clear()
+    await router.replace(`/practice/${postId.value}`)
+  } catch (err) {
+    uploadFailed.value = true
+    error.value = err instanceof Error ? err.message : String(err)
+  }
+}
+
+function setTrack(next: Track) {
+  track.value = next
+  if (audio.value) audio.value.src = `/api/tracks/${next.id}/audio`
+}
+
+/** Picks the song as the page opens, so it loads while the dancer gets ready. */
+async function loadTrack() {
+  const res = await fetch('/api/tracks/next')
+  // On failure START picks the song instead.
+  if (!res.ok) return
+  const { track: next } = (await res.json()) as { track: Track | null }
+  if (next && phase.value === 'ready') setTrack(next)
+}
+
 async function start() {
+  connectMixer()
   phase.value = 'starting'
   error.value = ''
-  const res = await fetch(`/api/posts/${props.id}/start`, { method: 'POST' })
+  const res = await fetch(`/api/posts/${postId.value}/start`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ track_id: track.value?.id }),
+  })
   if (!res.ok) {
     error.value = await errorMessage(res)
     phase.value = 'ready'
@@ -69,41 +148,30 @@ async function start() {
     phase.value = 'done'
     return
   }
-  track.value = result.track
-  if (audio.value) audio.value.src = `/api/tracks/${result.track.id}/audio`
+  // The server may pick another song, if the loaded one has left the playlist.
+  if (result.track.id !== track.value?.id) setTrack(result.track)
   await run()
 }
 
 function toggle() {
-  if (phase.value === 'ready') void start()
+  if (uploadFailed.value) void waitForUpload(pending.again())
+  else if (phase.value === 'ready' && postId.value !== null) void start()
   else if (phase.value === 'running') pause()
   else if (phase.value === 'paused') void run()
-}
-
-/** Fades the music out over about a second, then stops it. */
-function fadeOut() {
-  const el = audio.value
-  if (!el) return
-  const fade = setInterval(() => {
-    el.volume = Math.max(0, el.volume - 0.1)
-    if (el.volume === 0) {
-      clearInterval(fade)
-      el.pause()
-    }
-  }, 100)
 }
 
 async function finish() {
   clearInterval(timer)
   phase.value = 'publishing'
-  fadeOut()
+  // The fade has already brought the volume down to nothing.
+  audio.value?.pause()
   void wakeLock?.release()
   wakeLock = null
   await publish()
 }
 
 async function publish() {
-  const res = await fetch(`/api/posts/${props.id}/publish`, { method: 'POST' })
+  const res = await fetch(`/api/posts/${postId.value}/publish`, { method: 'POST' })
   if (res.ok) {
     phase.value = 'done'
     return
@@ -122,17 +190,25 @@ async function publish() {
 function onVisibility() {
   if (document.visibilityState === 'hidden') pause()
 }
-onMounted(() => document.addEventListener('visibilitychange', onVisibility))
+onMounted(() => {
+  document.addEventListener('visibilitychange', onVisibility)
+  void loadTrack().catch(() => {})
+  if (postId.value === null) void waitForUpload(pending.upload)
+})
 onBeforeUnmount(() => {
   document.removeEventListener('visibilitychange', onVisibility)
   clearInterval(timer)
   audio.value?.pause()
+  void mixer?.ctx.close()
   void wakeLock?.release()
 })
 
-const buttonLabel = computed(() =>
-  phase.value === 'running' ? 'PAUSE' : phase.value === 'paused' ? 'RESUME' : 'START',
-)
+const uploading = computed(() => postId.value === null && !uploadFailed.value)
+const buttonLabel = computed(() => {
+  if (uploadFailed.value) return 'RETRY'
+  if (uploading.value) return 'UPLOADING…'
+  return phase.value === 'running' ? 'PAUSE' : phase.value === 'paused' ? 'RESUME' : 'START'
+})
 </script>
 
 <template>
@@ -166,7 +242,11 @@ const buttonLabel = computed(() =>
     </div>
 
     <div class="deck">
-      <div class="deck__kicker mono-label">{{ track ? 'NOW PLAYING' : 'READY?' }}</div>
+      <div class="deck__kicker mono-label">
+        {{
+          !track ? 'READY?' : phase === 'ready' || phase === 'starting' ? 'UP NEXT' : 'NOW PLAYING'
+        }}
+      </div>
       <div class="deck__title">{{ track?.title ?? 'Press start and dance' }}</div>
       <p v-if="phase === 'publishing' && !error" class="deck__status" aria-live="polite">
         Posting…
@@ -176,7 +256,7 @@ const buttonLabel = computed(() =>
         <BaseButton
           variant="accent"
           :full-width="false"
-          :disabled="phase === 'starting' || phase === 'publishing'"
+          :disabled="uploading || phase === 'starting' || phase === 'publishing'"
           class="deck__btn"
           @click="toggle"
           >{{ buttonLabel }}</BaseButton
@@ -184,7 +264,7 @@ const buttonLabel = computed(() =>
       </div>
     </div>
 
-    <!-- Its src is set when the server picks the track. -->
+    <!-- Its src is set as soon as the server picks the track, so it loads before START. -->
     <audio ref="audio" preload="auto" loop></audio>
   </main>
 </template>

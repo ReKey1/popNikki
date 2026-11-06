@@ -29,7 +29,8 @@ const router = createRouter({
     },
     { path: '/me', name: 'profile', component: ProfileView, meta: { requiresAuth: true } },
     {
-      path: '/practice/:id(\\d+)',
+      // Without an id, the practice waits for the upload that is still in progress.
+      path: '/practice/:id(\\d+)?',
       name: 'practice',
       component: () => import('../views/PracticeView.vue'),
       props: true,
