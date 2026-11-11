@@ -21,14 +21,22 @@ const playButton = (wrapper: VueWrapper) => wrapper.get('.deck__btn')
 const clock = (wrapper: VueWrapper) => wrapper.get('[role="timer"]').text()
 
 const roll = (seconds = 120, title = 'Pop That Lock') => ({ seconds, track: { id: 2, title } })
-/** The roulette has already been spun: the page opens on its result. */
+/** The server's answer to a spin. */
 const rolled = (seconds = 120, title = 'Pop That Lock') =>
   Response.json({ roll: roll(seconds, title) })
-const notRolled = () => Response.json({ roll: null })
 /** Long enough for the time to land. The song is still rolling then. */
 const TIME_MS = 2600
 /** Long enough for the time to land and the song after it. */
 const SPIN_MS = 5000
+
+/** Opens the page and spins the roulette, which lands on whatever the server answers. */
+async function mountSpun(props?: { id?: string }) {
+  const wrapper = mountPractice(props)
+  await flushPromises()
+  await playButton(wrapper).trigger('click')
+  await vi.advanceTimersByTimeAsync(SPIN_MS)
+  return wrapper
+}
 
 describe('PracticeView', () => {
   let play: ReturnType<typeof vi.spyOn>
@@ -49,10 +57,12 @@ describe('PracticeView', () => {
 
   describe('roulette', () => {
     it('waits for a spin in as few words as it can, giving nothing away', async () => {
-      stubApi({ '/api/roll': notRolled() })
+      const fetch = stubApi({ '/api/roll': rolled() })
       const wrapper = mountPractice()
       await flushPromises()
 
+      // Nothing is asked of the server until the tap.
+      expect(fetch).not.toHaveBeenCalled()
       expect(playButton(wrapper).text()).toBe('SPIN')
       expect(clock(wrapper)).toBe('?:??')
       expect(wrapper.get('.deck').text()).toBe('ROULETTE???SPIN')
@@ -60,10 +70,7 @@ describe('PracticeView', () => {
     })
 
     it('rolls the time first, lands on it, then rolls the song', async () => {
-      const fetch = stubApi({
-        'GET /api/roll': notRolled(),
-        'POST /api/roll': Response.json({ roll: roll(90, 'Get Off') }),
-      })
+      const fetch = stubApi({ '/api/roll': rolled(90, 'Get Off') })
       const wrapper = mountPractice()
       await flushPromises()
 
@@ -97,10 +104,7 @@ describe('PracticeView', () => {
     })
 
     it('lands on zero with an animation of its own, so it reads as a result', async () => {
-      stubApi({
-        'GET /api/roll': notRolled(),
-        'POST /api/roll': Response.json({ roll: roll(0) }),
-      })
+      stubApi({ '/api/roll': rolled(0) })
       const wrapper = mountPractice()
       await flushPromises()
       await playButton(wrapper).trigger('click')
@@ -118,7 +122,7 @@ describe('PracticeView', () => {
 
     it('keeps spinning until the server answers', async () => {
       let answer!: (res: Response) => void
-      const fetch = stubApi({ 'GET /api/roll': notRolled() })
+      const fetch = stubApi({})
       const wrapper = mountPractice()
       await flushPromises()
       fetch.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)))
@@ -132,39 +136,47 @@ describe('PracticeView', () => {
       expect(clock(wrapper)).toBe('0:30')
     })
 
-    it('shows every result the same plain way, long or short', async () => {
+    it('shows every result above zero the same plain way, long or short', async () => {
       stubApi({ '/api/roll': rolled(180, 'Get Off') })
-      const long = mountPractice()
-      await flushPromises()
+      const long = await mountSpun()
       expect(long.get('.stage').text()).toBe('3:00UNTIL YOUR NIKKI DROPSQUIT = SAVED TO DRAFTS')
       expect(long.get('.deck').text()).toBe('UP NEXTGet OffSTART')
 
       stubApi({ '/api/roll': rolled(30, 'Get Off') })
-      const short = mountPractice()
-      await flushPromises()
+      const short = await mountSpun()
       expect(short.get('.stage').text()).toBe('0:30UNTIL YOUR NIKKI DROPSQUIT = SAVED TO DRAFTS')
       expect(short.get('.deck').text()).toBe('UP NEXTGet OffSTART')
     })
 
-    it('opens on the roll the member already has, with nothing to spin', async () => {
+    it('spins every time the page opens, and lands on the roll the member already has', async () => {
+      // The server keeps the roll, so it gives every spin the same answer.
       const fetch = stubApi({ '/api/roll': rolled(150, 'Get Off') })
-      const wrapper = mountPractice()
-      await flushPromises()
+      for (let visit = 0; visit < 2; visit++) {
+        const wrapper = mountPractice()
+        await flushPromises()
+        // The result is never shown ahead of the spin.
+        expect(playButton(wrapper).text()).toBe('SPIN')
+        expect(clock(wrapper)).toBe('?:??')
+        expect(wrapper.text()).not.toContain('Get Off')
 
-      expect(clock(wrapper)).toBe('2:30')
-      expect(wrapper.text()).toContain('UP NEXT')
-      expect(wrapper.text()).toContain('Get Off')
-      expect(wrapper.get('audio').attributes('src')).toBe('/api/tracks/2/audio')
-      expect(playButton(wrapper).text()).toBe('START')
-      expect(wrapper.find('.ring--landed').exists()).toBe(false)
-      expect(fetch).not.toHaveBeenCalledWith('/api/roll', { method: 'POST' })
+        await playButton(wrapper).trigger('click')
+        await vi.advanceTimersByTimeAsync(300)
+        expect(wrapper.find('.ring--spinning').exists()).toBe(true)
+        await vi.advanceTimersByTimeAsync(SPIN_MS)
+        expect(clock(wrapper)).toBe('2:30')
+        expect(wrapper.get('.deck__title').text()).toBe('Get Off')
+        expect(wrapper.find('.ring--landed').exists()).toBe(true)
+        expect(playButton(wrapper).text()).toBe('START')
+        wrapper.unmount()
+      }
+      expect(fetch.mock.calls).toEqual([
+        ['/api/roll', { method: 'POST' }],
+        ['/api/roll', { method: 'POST' }],
+      ])
     })
 
     it('shows why a spin failed and lets the member spin again', async () => {
-      stubApi({
-        'GET /api/roll': notRolled(),
-        'POST /api/roll': Response.json({ error: 'Down for a moment' }, { status: 500 }),
-      })
+      stubApi({ '/api/roll': Response.json({ error: 'Down for a moment' }, { status: 500 }) })
       const wrapper = mountPractice()
       await flushPromises()
       await playButton(wrapper).trigger('click')
@@ -179,12 +191,8 @@ describe('PracticeView', () => {
         '/api/roll': rolled(0),
         '/api/posts/5/start': Response.json({ published: true }),
       })
-      const wrapper = mountPractice()
-      await flushPromises()
+      const wrapper = await mountSpun()
       expect(clock(wrapper)).toBe('0:00')
-      // Coming back to it later, the full ring still shows it is a result, without the show.
-      expect(wrapper.get('.ring__fill').attributes('style')).toContain('360deg')
-      expect(wrapper.find('.ring__sprout').exists()).toBe(false)
       expect(playButton(wrapper).text()).toBe('POST')
 
       await playButton(wrapper).trigger('click')
@@ -196,8 +204,7 @@ describe('PracticeView', () => {
 
     it('has nothing to spin for when the playlist is empty, and posts at once', async () => {
       stubApi({
-        'GET /api/roll': notRolled(),
-        'POST /api/roll': Response.json({ roll: null }),
+        '/api/roll': Response.json({ roll: null }),
         '/api/posts/5/start': Response.json({ published: true }),
       })
       const wrapper = mountPractice()
@@ -220,8 +227,7 @@ describe('PracticeView', () => {
       '/api/posts/5/start': Response.json(roll(90)),
       '/api/posts/5/publish': new Response(null, { status: 204 }),
     })
-    const wrapper = mountPractice()
-    await flushPromises()
+    const wrapper = await mountSpun()
 
     await playButton(wrapper).trigger('click')
     await flushPromises()
@@ -245,8 +251,7 @@ describe('PracticeView', () => {
       '/api/roll': rolled(90),
       '/api/posts/5/start': Response.json({ seconds: 180, track: { id: 7, title: 'Get Off' } }),
     })
-    const wrapper = mountPractice()
-    await flushPromises()
+    const wrapper = await mountSpun()
     await playButton(wrapper).trigger('click')
     await flushPromises()
 
@@ -265,8 +270,7 @@ describe('PracticeView', () => {
       { id: 5, description: '', created_at: 1 },
       { id: 6, description: '', created_at: 2 },
     ]
-    const wrapper = mountPractice()
-    await flushPromises()
+    const wrapper = await mountSpun()
     await playButton(wrapper).trigger('click')
     await flushPromises()
 
@@ -276,8 +280,7 @@ describe('PracticeView', () => {
 
   it('pauses when the page is hidden and resumes on tap', async () => {
     stubApi({ '/api/roll': rolled(), '/api/posts/5/start': Response.json(roll()) })
-    const wrapper = mountPractice()
-    await flushPromises()
+    const wrapper = await mountSpun()
     await playButton(wrapper).trigger('click')
     await flushPromises()
     await vi.advanceTimersByTimeAsync(10_000)
@@ -306,8 +309,7 @@ describe('PracticeView', () => {
         { status: 409 },
       ),
     })
-    const wrapper = mountPractice()
-    await flushPromises()
+    const wrapper = await mountSpun()
     await playButton(wrapper).trigger('click')
     await flushPromises()
     await vi.advanceTimersByTimeAsync(120_000)
@@ -350,8 +352,7 @@ describe('PracticeView', () => {
         '/api/posts/5/start': Response.json(roll()),
         '/api/posts/5/publish': new Response(null, { status: 204 }),
       })
-      const wrapper = mountPractice()
-      await flushPromises()
+      const wrapper = await mountSpun()
       await playButton(wrapper).trigger('click')
       await flushPromises()
       expect(gain.setValueAtTime).toHaveBeenLastCalledWith(0, 10)
@@ -374,8 +375,7 @@ describe('PracticeView', () => {
     it('fades in again on resume', async () => {
       const { ramps } = stubAudioContext()
       stubApi({ '/api/roll': rolled(), '/api/posts/5/start': Response.json(roll()) })
-      const wrapper = mountPractice()
-      await flushPromises()
+      const wrapper = await mountSpun()
       await playButton(wrapper).trigger('click')
       await flushPromises()
       await playButton(wrapper).trigger('click')
@@ -392,8 +392,7 @@ describe('PracticeView', () => {
 
   it('shows an error when the draft is gone', async () => {
     stubApi({ '/api/roll': rolled() })
-    const wrapper = mountPractice()
-    await flushPromises()
+    const wrapper = await mountSpun()
     await playButton(wrapper).trigger('click')
     await flushPromises()
     expect(wrapper.find('[role="alert"]').exists()).toBe(true)
@@ -402,8 +401,7 @@ describe('PracticeView', () => {
 
   it('leaves without keeping the timer in the history', async () => {
     stubApi({ '/api/roll': rolled(0), '/api/posts/5/start': Response.json({ published: true }) })
-    const wrapper = mountPractice()
-    await flushPromises()
+    const wrapper = await mountSpun()
     await wrapper.get('[aria-label="Quit"]').trigger('click')
     expect(leaveStep).toHaveBeenLastCalledWith(router, '/me')
 
@@ -418,11 +416,7 @@ describe('PracticeView', () => {
 
   describe('while the photo uploads', () => {
     it('spins meanwhile, then waits for the upload before the start', async () => {
-      stubApi({
-        'GET /api/roll': notRolled(),
-        'POST /api/roll': Response.json({ roll: roll() }),
-        '/api/posts/7/start': Response.json(roll()),
-      })
+      stubApi({ '/api/roll': rolled(), '/api/posts/7/start': Response.json(roll()) })
       let finish!: (id: number) => void
       usePendingPostStore().upload = new Promise((resolve) => (finish = resolve))
       const wrapper = mountPractice({})
@@ -459,7 +453,7 @@ describe('PracticeView', () => {
       await flushPromises()
       expect(again).toHaveBeenCalled()
       expect(router.replace).toHaveBeenCalledWith('/practice/8')
-      expect(playButton(wrapper).text()).toBe('START')
+      expect(playButton(wrapper).text()).toBe('SPIN')
     })
 
     it('goes to your drafts when there is no upload', async () => {

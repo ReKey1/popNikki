@@ -152,7 +152,7 @@ Rough storage estimate: 20 people posting a 350 KB photo weekly adds about 365 M
 When the user taps Send:
 
 1. The photo and description upload in the background, so a crash or closed tab doesn't lose them.
-2. The user spins the roulette. The server rolls a dance time from 0 to 180 seconds (two minutes on average) and a track that avoids the user's last few songs, and keeps that roll until a post is published. Spinning again, quitting or deleting the draft returns the same roll.
+2. The user spins the roulette. The server rolls a dance time from 0 to 180 seconds (two minutes on average) and a track that avoids the user's last few songs, and keeps that roll until a post is published. Spinning again, quitting or deleting the draft returns the same roll. The page spins every time it opens, so a draft that was spun before plays the roulette again and lands on that same roll.
 3. The user taps Start, which starts the audio, since mobile browsers need a user gesture. The server copies the roll to the draft and records `music_started_at`.
 4. Screen Wake Lock keeps the screen on where supported.
 5. Music and the on-screen timer pause if the user leaves the page, then resume when they return.

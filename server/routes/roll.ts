@@ -76,14 +76,9 @@ export async function takeRoll(db: D1Database, userId: number): Promise<Roll | n
 
 const roll = new Hono<AppEnv>()
 
-// The roll waiting for the member's next nikki, if they have spun. Spins nothing.
-// The odds are never sent: a member isn't told when theirs are better than the default.
-roll.get('/api/roll', requireUser, async (c) => {
-  const rolled = await rollQuery(c.env.DB, c.var.user.id).first<RollRow>()
-  return c.json({ roll: toRoll(rolled ?? undefined) })
-})
-
-// Spins the roulette. Spinning again returns the same roll until a nikki is published.
+// Spins the roulette. The page spins every time it opens, and until a nikki is published every
+// spin gets the same roll. The odds are never sent: a member isn't told when theirs are better
+// than the default.
 roll.post('/api/roll', requireUser, async (c) => {
   return c.json({ roll: await takeRoll(c.env.DB, c.var.user.id) })
 })
