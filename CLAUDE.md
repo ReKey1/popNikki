@@ -67,7 +67,7 @@ The project was scaffolded with Cloudflare's official tool (`npm create cloudfla
 - **Follow official conventions for everything:** file layout, Wrangler config, migrations, Vue style and test placement. Use Cloudflare's, Vue's and Hono's docs. When unsure, check the docs or the existing code. Never assume a structure.
 - **Don't hand-roll what a common library already does.** Prefer the platform and existing dependencies first (Hono middleware and helpers, Web APIs), then a well-known package.
 - **Keep it minimal.** Choose ease of use over clever mechanisms.
-- **Keep the interface sleek.** Add no text the design can do without. Never present a long practice as a bad result, or a short one as a win: every roulette result looks the same.
+- **Keep the interface sleek.** Add no text the design can do without. Never present a long practice as a bad result. Every roulette result lands with the same clear animation, except zero, which has one of its own so it doesn't look like a fault.
 - **Every change ships with tests.**
 - **Security and privacy are checked on every change.** See below.
 - The `cloudflare` and `vuejs-ai` skills are enabled in [.claude/settings.json](.claude/settings.json). The Vue skills are a community project, so official Vue docs win any conflict.
@@ -86,7 +86,7 @@ The **repo is public.** Never commit tag tokens, tag URLs, provisioning output (
 - **Usernames** are tidied on the server (NFKC, no invisible or control characters), so one name can't pass for another.
 - **R2 stays private.** Every photo and audio file goes through the Worker, which checks the session first. Audio responses must support HTTP Range requests for Safari.
 - **The dance time is rolled and enforced on the server.** The roulette (`server/lib/roulette.ts`) lands on 0 to 180 seconds, two minutes on average. A member has one roll (`rolls` table) from their first spin until a nikki is published, so quitting, deleting a draft or spinning again never changes it. `POST /api/posts/:id/start` copies it to the draft, and publishing is checked against `music_started_at`. The client timer is not trusted. The post is published at once on a roll of zero seconds and, as the owner chose, when the `tracks` table is empty. Both decisions are made on the server.
-- **The roulette's odds are secret.** Members with few nikki, or none for a while, are likelier to roll a short dance. The owner wants this never shown or hinted at: no API response carries the odds, and the page shows every result the same way.
+- **The roulette's odds are secret.** Members with few nikki, or none for a while, are likelier to roll a short dance. The owner wants this never shown or hinted at: no API response carries the odds, and nothing on the page hints at them.
 - **Photos:** resize and re-encode in the browser to strip EXIF and GPS data (about 1600 px, plus a thumbnail of about 400 px). The server checks the type, the size and that the bytes start like a JPEG, and stops at 20 unposted drafts per member.
 - **Update badges** are tracked per plant in `plant_views` and cleared only when the viewer opens that plant.
 - **Music licensing:** never add a commercial recording to the repo or to R2 without the owner's confirmed permission. Tracks store only a `title` and an `r2_key`, so keep the record of each song's permission outside the repo.

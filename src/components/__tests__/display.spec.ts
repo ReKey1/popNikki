@@ -130,7 +130,16 @@ describe('TimerRing', () => {
       mount(TimerRing, { props }).get('.ring__fill').attributes('style')
     expect(fill({ remaining: 45, total: 180 })).toContain('270deg')
     expect(fill({ remaining: 15, total: 30 })).toContain('180deg')
-    expect(fill({ remaining: 0, total: 0 })).toContain(' 0deg')
+  })
+
+  it('is complete from the start when there is no time to count down', () => {
+    const wrapper = mount(TimerRing, { props: { remaining: 0, total: 0 } })
+    expect(wrapper.get('.ring__fill').attributes('style')).toContain('360deg')
+    expect(wrapper.get('.ring').classes()).toContain('ring--zero')
+    expect(wrapper.get('[role="timer"]').text()).toBe('0:00')
+    // Only a landing sets anything off.
+    expect(wrapper.find('.ring__sprout').exists()).toBe(false)
+    expect(wrapper.find('.ring__burst').exists()).toBe(false)
   })
 
   it('becomes the roulette: it shows what it is given and circles until it lands', async () => {
@@ -147,8 +156,28 @@ describe('TimerRing', () => {
 
     await wrapper.setProps({ remaining: 90, total: 90, display: undefined, roulette: 'landed' })
     expect(wrapper.get('[role="timer"]').text()).toBe('1:30')
-    expect(wrapper.find('.ring__burst').exists()).toBe(true)
     expect(wrapper.get('.ring__fill').attributes('style')).toContain('conic-gradient')
+  })
+
+  it('announces the result it lands on: the ring lights up and sends out ripples', () => {
+    const wrapper = mount(TimerRing, { props: { remaining: 150, total: 150, roulette: 'landed' } })
+    expect(wrapper.get('.ring').classes()).toContain('ring--landed')
+    expect(wrapper.find('.ring__flash').exists()).toBe(true)
+    expect(wrapper.findAll('.ring__burst')).toHaveLength(2)
+    // The sprouts are for zero alone.
+    expect(wrapper.find('.ring__sprout').exists()).toBe(false)
+    expect(wrapper.get('.ring').classes()).not.toContain('ring--zero')
+  })
+
+  it('gives a landing on zero an animation of its own', () => {
+    const wrapper = mount(TimerRing, { props: { remaining: 0, total: 0, roulette: 'landed' } })
+    expect(wrapper.get('.ring').classes()).toEqual(
+      expect.arrayContaining(['ring--landed', 'ring--zero']),
+    )
+    expect(wrapper.findAll('.ring__sprout')).toHaveLength(6)
+    expect(wrapper.findAll('.ring__burst')).toHaveLength(3)
+    // The ring is already full, so it has nothing to flash.
+    expect(wrapper.find('.ring__flash').exists()).toBe(false)
   })
 
   it('caps its width at size and shrinks with the screen', () => {

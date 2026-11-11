@@ -25,8 +25,10 @@ const roll = (seconds = 120, title = 'Pop That Lock') => ({ seconds, track: { id
 const rolled = (seconds = 120, title = 'Pop That Lock') =>
   Response.json({ roll: roll(seconds, title) })
 const notRolled = () => Response.json({ roll: null })
-/** Long enough for the roulette to slow down and land. */
-const SPIN_MS = 3000
+/** Long enough for the time to land. The song is still rolling then. */
+const TIME_MS = 2600
+/** Long enough for the time to land and the song after it. */
+const SPIN_MS = 5000
 
 describe('PracticeView', () => {
   let play: ReturnType<typeof vi.spyOn>
@@ -57,7 +59,7 @@ describe('PracticeView', () => {
       expect(wrapper.get('audio').attributes('src')).toBeUndefined()
     })
 
-    it('spins, hides the result while it turns, then lands on the time and song', async () => {
+    it('rolls the time first, lands on it, then rolls the song', async () => {
       const fetch = stubApi({
         'GET /api/roll': notRolled(),
         'POST /api/roll': Response.json({ roll: roll(90, 'Get Off') }),
@@ -71,17 +73,47 @@ describe('PracticeView', () => {
       expect(playButton(wrapper).attributes('disabled')).toBeDefined()
       expect(wrapper.find('.ring--spinning').exists()).toBe(true)
       expect(clock(wrapper)).toMatch(/^\d:\d\d$/)
-      expect(wrapper.text()).not.toContain('Get Off')
-      // The song is already loading.
+      // Only the clock is rolling. The song hasn't started.
+      expect(wrapper.get('.deck__title').text()).toBe('???')
+      // It is already loading, though.
       expect(wrapper.get('audio').attributes('src')).toBe('/api/tracks/2/audio')
 
-      await vi.advanceTimersByTimeAsync(SPIN_MS)
+      // The time has landed and is announced, while the song still rolls.
+      await vi.advanceTimersByTimeAsync(TIME_MS - 300)
       expect(clock(wrapper)).toBe('1:30')
-      expect(wrapper.text()).toContain('UP NEXT')
-      expect(wrapper.text()).toContain('Get Off')
       expect(wrapper.find('.ring--landed').exists()).toBe(true)
+      expect(wrapper.find('.ring__flash').exists()).toBe(true)
+      expect(wrapper.find('.ring__sprout').exists()).toBe(false)
+      expect(wrapper.text()).not.toContain('Get Off')
+      expect(playButton(wrapper).attributes('disabled')).toBeDefined()
+
+      await vi.advanceTimersByTimeAsync(SPIN_MS - TIME_MS)
+      expect(wrapper.text()).toContain('UP NEXT')
+      expect(wrapper.get('.deck__title').text()).toBe('Get Off')
+      expect(wrapper.get('.deck__title').classes()).toContain('deck__title--landed')
       expect(playButton(wrapper).text()).toBe('START')
+      expect(playButton(wrapper).attributes('disabled')).toBeUndefined()
       expect(play).not.toHaveBeenCalled()
+    })
+
+    it('lands on zero with an animation of its own, so it reads as a result', async () => {
+      stubApi({
+        'GET /api/roll': notRolled(),
+        'POST /api/roll': Response.json({ roll: roll(0) }),
+      })
+      const wrapper = mountPractice()
+      await flushPromises()
+      await playButton(wrapper).trigger('click')
+      // No song rolls for a dance of no length: it is ready as soon as the time lands.
+      await vi.advanceTimersByTimeAsync(TIME_MS)
+
+      expect(clock(wrapper)).toBe('0:00')
+      expect(wrapper.get('.deck__title').text()).toBe('')
+      expect(playButton(wrapper).attributes('disabled')).toBeUndefined()
+      expect(wrapper.find('.ring--landed.ring--zero').exists()).toBe(true)
+      expect(wrapper.findAll('.ring__sprout')).toHaveLength(6)
+      expect(wrapper.get('.ring__fill').attributes('style')).toContain('360deg')
+      expect(playButton(wrapper).text()).toBe('POST')
     })
 
     it('keeps spinning until the server answers', async () => {
@@ -150,6 +182,9 @@ describe('PracticeView', () => {
       const wrapper = mountPractice()
       await flushPromises()
       expect(clock(wrapper)).toBe('0:00')
+      // Coming back to it later, the full ring still shows it is a result, without the show.
+      expect(wrapper.get('.ring__fill').attributes('style')).toContain('360deg')
+      expect(wrapper.find('.ring__sprout').exists()).toBe(false)
       expect(playButton(wrapper).text()).toBe('POST')
 
       await playButton(wrapper).trigger('click')

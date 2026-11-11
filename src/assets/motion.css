@@ -133,6 +133,53 @@
   }
 }
 
+/* The roulette's result stamping down: it lands big and lit, holds, then settles. */
+@keyframes pn-land {
+  0% {
+    transform: scale(1.35);
+    color: var(--orange);
+  }
+  22% {
+    transform: scale(0.94);
+    color: var(--orange);
+  }
+  38% {
+    transform: scale(1.05);
+    color: var(--orange);
+  }
+  52%,
+  80% {
+    transform: scale(1);
+    color: var(--orange);
+  }
+}
+
+/* A roll of zero bouncing in. */
+@keyframes pn-zero {
+  0% {
+    transform: scale(0.3) rotate(-16deg);
+  }
+  35% {
+    transform: scale(1.35) rotate(8deg);
+  }
+  55% {
+    transform: scale(0.9) rotate(-4deg);
+  }
+  75% {
+    transform: scale(1.08) rotate(2deg);
+  }
+}
+
+/* A light going out. */
+@keyframes pn-flash {
+  30% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
 /* A number changing, or a control answering a tap. */
 @keyframes pn-bump {
   40% {
