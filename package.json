@@ -12,6 +12,7 @@
     "deploy": "npm run build && wrangler deploy",
     "cf-typegen": "wrangler types",
     "users:create": "node scripts/create-users.ts",
+    "users:revoke": "node scripts/revoke-user.ts",
     "tracks:add": "node scripts/add-tracks.ts",
     "test": "vitest run",
     "test:watch": "vitest",

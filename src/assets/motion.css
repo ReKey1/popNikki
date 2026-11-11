@@ -125,6 +125,58 @@
   }
 }
 
+/* Content arriving: it rises a little as it fades in. */
+@keyframes pn-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+/* A number changing, or a control answering a tap. */
+@keyframes pn-bump {
+  40% {
+    transform: scale(1.18);
+  }
+}
+
+@keyframes pn-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* One flicker of the roulette: the new value drops into place. */
+@keyframes pn-tick {
+  from {
+    opacity: 0.2;
+    transform: translateY(-22%);
+    filter: blur(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+/* A page arriving after a step forward. No fill mode: once it has played, nothing is left
+   on the page to get in the way of sticky headers. */
+.pn-page {
+  animation: pn-rise var(--dur-move) var(--ease-out);
+}
+
+/* The children of a list arriving one after another: set `--i` to each one's place in line.
+   Going back shows the page as it was, at once. */
+.pn-stagger > * {
+  animation: pn-rise 0.32s var(--ease-out) backwards;
+  animation-delay: calc(min(var(--i, 0), 8) * 40ms);
+}
+
+.pn-page--back .pn-stagger > * {
+  animation: none;
+}
+
 /* Looping decoration stops for people who ask for less motion. */
 @media (prefers-reduced-motion: reduce) {
   *,

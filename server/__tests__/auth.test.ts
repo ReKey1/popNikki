@@ -65,6 +65,33 @@ describe('auth', () => {
         .first<{ last_login_at: number | null }>()
       expect(user!.last_login_at).toBeGreaterThan(0)
     })
+
+    it('replaces the session this device had, and clears away expired ones', async () => {
+      const { id, token } = await addUser('nikki')
+      const first = await logIn(token)
+      const otherDevice = await logIn(token)
+      await db
+        .prepare(
+          "INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES ('old', ?, 1, 2)",
+        )
+        .bind(id)
+        .run()
+
+      const res = await request(`/tag?t=${token}`, { headers: { Cookie: first } })
+      const second = cookieFrom(res, 'session')
+
+      expect(second).not.toBe(first)
+      expect((await me(first)).status).toBe(401)
+      expect((await me(second)).status).toBe(200)
+      expect((await me(otherDevice)).status).toBe(200)
+      const { results } = await db.prepare('SELECT token_hash FROM sessions').all()
+      expect(results).toHaveLength(2)
+    })
+
+    it('is never stored by the browser', async () => {
+      const { token } = await addUser('nikki')
+      expect((await request(`/tag?t=${token}`)).headers.get('Cache-Control')).toBe('no-store')
+    })
   })
 
   describe('POST /api/claim', () => {
@@ -93,6 +120,21 @@ describe('auth', () => {
       expect((await claim(cookie, '   ')).status).toBe(400)
       expect((await claim(cookie, 'x'.repeat(21))).status).toBe(400)
       expect((await claim(cookie, 42)).status).toBe(400)
+      // Nothing is left of a name made of invisible characters.
+      expect((await claim(cookie, '\u200b\u202e\u0000')).status).toBe(400)
+    })
+
+    it('tidies a name so that look-alikes are the same name', async () => {
+      await addUser('nikki')
+      // Zero-width and full-width characters would otherwise pass for another member's name.
+      expect((await claim(await claimCookie(), 'nik\u200bki')).status).toBe(409)
+      expect((await claim(await claimCookie(), '\uff4e\uff49\uff4b\uff4b\uff49')).status).toBe(409)
+
+      const res = await claim(await claimCookie(), ' pop\n\u202enikki  2 ')
+      expect(res.status).toBe(204)
+      expect(await (await me(cookieFrom(res, 'session'))).json()).toMatchObject({
+        username: 'pop nikki 2',
+      })
     })
 
     it('needs a claim cookie', async () => {
@@ -147,6 +189,8 @@ describe('auth', () => {
       expect(res.status).toBe(204)
       expect(res.headers.getSetCookie().find((c) => c.startsWith('session='))).toMatch(/Max-Age=0/)
       expect((await me(cookie)).status).toBe(401)
+      // The photos and data this device kept go with the session.
+      expect(res.headers.get('Clear-Site-Data')).toBe('"cache", "storage"')
     })
   })
   describe('PATCH /api/me', () => {

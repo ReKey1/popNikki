@@ -10,6 +10,7 @@ const { draggable = false } = defineProps<{
 
 const open = defineModel<boolean>('open', { default: false })
 const dialog = useTemplateRef<HTMLDialogElement>('dialog')
+const panel = useTemplateRef<HTMLElement>('panel')
 const handle = useTemplateRef<HTMLElement>('handle')
 
 // A modal <dialog> gives focus trapping, Esc to close and the backdrop for free.
@@ -26,7 +27,8 @@ watch(open, (isOpen) => {
 })
 onMounted(sync)
 
-// A click on the dialog box itself (not its content) is a click on the backdrop.
+// The dialog fills the screen and only its panel is drawn, so a click on the dialog itself
+// (not on the panel or its content) is a click outside the sheet.
 function onClick(event: MouseEvent) {
   if (event.target === dialog.value) open.value = false
 }
@@ -40,7 +42,7 @@ const { distanceY } = usePointerSwipe(handle, {
   threshold: 10,
   onSwipeStart() {
     if (!draggable) return
-    startHeight = dialog.value?.getBoundingClientRect().height ?? 0
+    startHeight = panel.value?.getBoundingClientRect().height ?? 0
   },
   onSwipe() {
     if (!draggable) return
@@ -62,14 +64,21 @@ const { distanceY } = usePointerSwipe(handle, {
 <template>
   <dialog
     ref="dialog"
-    :class="['sheet', draggable && `sheet--${snap}`, { 'sheet--dragging': dragHeight !== null }]"
-    :style="dragHeight !== null ? { height: `${dragHeight}px` } : undefined"
+    class="sheet"
     :data-snap="draggable ? snap : undefined"
     :aria-label="title"
     @close="open = false"
     @click="onClick"
   >
-    <div class="sheet__body">
+    <div
+      ref="panel"
+      :class="[
+        'sheet__panel',
+        draggable && `sheet__panel--${snap}`,
+        { 'sheet__panel--dragging': dragHeight !== null },
+      ]"
+      :style="dragHeight !== null ? { height: `${dragHeight}px` } : undefined"
+    >
       <div ref="handle" :class="['sheet__handle', { 'sheet__handle--drag': draggable }]">
         <span v-if="draggable" class="sheet__grip" aria-hidden="true"></span>
         <div class="sheet__head">
@@ -87,55 +96,82 @@ const { distanceY } = usePointerSwipe(handle, {
 </template>
 
 <style scoped>
-/* The sheet slides up from the bottom edge and back down when it closes. */
+/*
+ * The dialog is a clear layer hung from the top of the screen and exactly as tall as the part
+ * of the page that shows (100dvh). The panel sits at the bottom of that layer. Hanging the
+ * sheet from the dialog's own bottom edge instead left it under Safari's toolbar on an iPhone
+ * with the address bar at the bottom.
+ */
 .sheet {
+  position: fixed;
+  inset: 0 0 auto;
+  display: none;
+  flex-direction: column;
+  justify-content: flex-end;
   width: 100%;
   max-width: 430px;
-  max-height: 90dvh;
-  margin: auto auto 0;
+  height: 100dvh;
+  max-height: none;
+  margin: 0 auto;
   padding: 0;
   overflow: hidden;
   border: none;
-  border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
-  background: var(--paper);
+  background: transparent;
   color: var(--ink);
-  translate: 0 100%;
+  /* Keeps the dialog on screen until the panel has slid away. */
   transition:
-    translate 0.3s ease-out,
-    height 0.25s ease-out,
-    overlay 0.3s allow-discrete,
-    display 0.3s allow-discrete;
+    overlay var(--dur-sheet) allow-discrete,
+    display var(--dur-sheet) allow-discrete;
 }
 
 .sheet[open] {
+  display: flex;
+}
+
+/* The sheet slides up from the bottom edge and back down when it closes. */
+.sheet__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-height: 90dvh;
+  padding: 18px 22px 0;
+  border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
+  background: var(--paper);
+  translate: 0 100%;
+  transition:
+    translate var(--dur-sheet) var(--ease-out),
+    height var(--dur-move) var(--ease-out);
+}
+
+.sheet[open] .sheet__panel {
   translate: 0 0;
 }
 
 @starting-style {
-  .sheet[open] {
+  .sheet[open] .sheet__panel {
     translate: 0 100%;
   }
 }
 
-.sheet--half {
+.sheet__panel--half {
   height: 50dvh;
 }
 
-.sheet--full {
+.sheet__panel--full {
   height: 90dvh;
 }
 
 /* The height follows the finger without lag. */
-.sheet--dragging {
+.sheet__panel--dragging {
   transition: none;
 }
 
 .sheet::backdrop {
   background: transparent;
   transition:
-    background-color 0.3s,
-    overlay 0.3s allow-discrete,
-    display 0.3s allow-discrete;
+    background-color var(--dur-sheet),
+    overlay var(--dur-sheet) allow-discrete,
+    display var(--dur-sheet) allow-discrete;
 }
 
 .sheet[open]::backdrop {
@@ -146,15 +182,6 @@ const { distanceY } = usePointerSwipe(handle, {
   .sheet[open]::backdrop {
     background: transparent;
   }
-}
-
-.sheet__body {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  height: 100%;
-  max-height: 90dvh;
-  padding: 18px 22px 0;
 }
 
 .sheet__handle {
@@ -198,6 +225,11 @@ const { distanceY } = usePointerSwipe(handle, {
   color: var(--ink);
   font: 16px sans-serif;
   cursor: pointer;
+  transition: transform var(--dur-press);
+}
+
+.sheet__close:active {
+  transform: scale(0.92);
 }
 
 /* The content scrolls inside the sheet at any height. */

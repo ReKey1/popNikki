@@ -1,4 +1,7 @@
+import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { nextTick } from 'vue'
 
 import { stubApi, testPinia } from '@/__tests__/helpers'
 import type { Plant, PlantPosts } from '@/lib/api'
@@ -70,6 +73,29 @@ describe('garden store', () => {
 
     await garden.markSeen(2)
     expect(garden.plants![0]!.unseen).toBe(false)
+  })
+
+  it('remembers the garden on the device, but not the nikki or drafts', async () => {
+    stubApi({
+      '/api/plants': Response.json([plant(1)]),
+      '/api/users/2/posts': Response.json(posts()),
+      '/api/me/drafts': Response.json([{ id: 3, description: '', created_at: 1 }]),
+    })
+    const garden = useGardenStore()
+    await Promise.all([garden.loadPlants(), garden.loadPosts(2), garden.loadDrafts()])
+    await nextTick()
+
+    // The next visit: new stores over the same device.
+    setActivePinia(createPinia())
+    const next = useGardenStore()
+    expect(next.plants).toEqual([plant(1)])
+    expect(next.posts).toEqual({})
+    expect(next.drafts).toBeNull()
+
+    next.clear()
+    await nextTick()
+    setActivePinia(createPinia())
+    expect(useGardenStore().plants).toBeNull()
   })
 
   it('forgets everything on clear', async () => {

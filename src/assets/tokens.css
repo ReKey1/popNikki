@@ -31,6 +31,7 @@
   --on-night-soft: rgb(244 241 234 / 12%);
   --on-night-line: rgb(244 241 234 / 35%);
   --scrim: rgb(22 21 18 / 45%);
+  --night-veil: rgb(22 21 18 / 70%); /* a label over the camera picture */
 
   /* Type */
   --font-spray: 'Rubik Spray Paint', sans-serif; /* logo and celebration only */
@@ -96,7 +97,11 @@
   );
   --tape: repeating-linear-gradient(-45deg, var(--orange) 0 10px, var(--orange-deep) 10px 20px);
 
-  /* Motion */
+  /* Motion: quick to start, soft to stop. Nothing a tap sets off runs longer than --dur-sheet. */
   --ease-spring: cubic-bezier(0.3, 1.6, 0.5, 1);
-  --dur-press: 0.15s;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-tap: 0.08s; /* a hard-shadow button going down */
+  --dur-press: 0.15s; /* anything else shrinking under a finger */
+  --dur-move: 0.22s; /* content arriving or changing place */
+  --dur-sheet: 0.28s; /* a sheet sliding over the page */
 }

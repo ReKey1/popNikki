@@ -38,9 +38,10 @@ describe('BaseSheet', () => {
     wrapper.unmount()
   })
 
-  it('closes on a backdrop click but not on a click inside', async () => {
+  it('closes on a click outside the sheet but not on a click inside', async () => {
     const wrapper = mountSheet(true)
     await wrapper.get('p').trigger('click')
+    await wrapper.get('.sheet__panel').trigger('click')
     expect(wrapper.props('open')).toBe(true)
 
     await wrapper.get('dialog').trigger('click')
@@ -93,7 +94,8 @@ describe('BaseSheet', () => {
 
       await drag(wrapper, -120)
       expect(dialog.attributes('data-snap')).toBe('full')
-      expect(dialog.attributes('style')).toBeUndefined()
+      expect(wrapper.get('.sheet__panel').classes()).toContain('sheet__panel--full')
+      expect(wrapper.get('.sheet__panel').attributes('style')).toBeUndefined()
 
       await drag(wrapper, 120)
       expect(dialog.attributes('data-snap')).toBe('half')
@@ -106,7 +108,7 @@ describe('BaseSheet', () => {
       await pointer(wrapper, 'pointerdown', 400)
       await pointer(wrapper, 'pointermove', 300)
       // jsdom lays nothing out, so the sheet starts at 0px and grows by the 100px dragged.
-      expect(wrapper.get('dialog').attributes('style')).toContain('height: 100px')
+      expect(wrapper.get('.sheet__panel').attributes('style')).toContain('height: 100px')
       wrapper.unmount()
     })
 

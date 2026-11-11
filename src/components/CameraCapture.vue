@@ -3,10 +3,12 @@ import { onBeforeUnmount, onMounted, ref, shallowRef, useTemplateRef, watch } fr
 import { useRouter } from 'vue-router'
 
 import BaseIconButton from './BaseIconButton.vue'
+import { usePageColor } from '@/composables/usePageColor'
 import { goBack } from '@/lib/navigation'
 
 const emit = defineEmits<{ picked: [photo: Blob] }>()
 const router = useRouter()
+usePageColor('night')
 
 const video = useTemplateRef<HTMLVideoElement>('video')
 const facing = ref<'environment' | 'user'>('environment')
@@ -212,7 +214,7 @@ function pick(event: Event) {
   transform: translateX(-50%);
   padding: 6px 12px;
   border-radius: var(--radius-pill);
-  background: rgb(22 21 18 / 70%);
+  background: var(--night-veil);
   font: var(--type-mono-meta);
   letter-spacing: var(--tracking-label);
   white-space: nowrap;
@@ -222,7 +224,7 @@ function pick(event: Event) {
   position: relative;
   width: min(230px, 60vw, 32dvh);
   aspect-ratio: 1;
-  border: 1.5px dashed rgb(244 241 234 / 40%);
+  border: 1.5px dashed var(--on-night-line);
   border-radius: 50%;
 }
 
@@ -294,6 +296,11 @@ function pick(event: Event) {
   background: var(--on-night-soft);
   color: var(--on-night);
   cursor: pointer;
+}
+
+.native,
+.shutter {
+  transition: transform var(--dur-press);
 }
 
 .native:active {

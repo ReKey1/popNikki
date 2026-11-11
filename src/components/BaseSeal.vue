@@ -4,7 +4,7 @@ const {
   caption = 'TAP TO OPEN',
   text = 'UNSEEN ✦ UNSEEN ✦ UNSEEN ✦ UNSEEN ✦ ',
 } = defineProps<{
-  /** Plays the break animation (0.55s). */
+  /** Plays the break animation (0.4s). */
   breaking?: boolean
   caption?: string
   text?: string
@@ -35,7 +35,7 @@ const {
 }
 
 .seal--breaking {
-  animation: pn-break 0.55s ease-in forwards;
+  animation: pn-break 0.4s ease-in forwards;
 }
 
 .seal__tape {

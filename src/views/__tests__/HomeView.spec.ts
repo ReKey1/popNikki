@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { getActivePinia } from 'pinia'
+import { createPinia, getActivePinia } from 'pinia'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { stubApi, testPinia, testRouter } from '@/__tests__/helpers'
@@ -107,14 +107,53 @@ describe('HomeView', () => {
       '/api/me': Response.json({ id: 1, username: 'nikki' }),
       '/api/plants': Response.json([plant(2, 'けんじ')]),
     })
-    mountHome().unmount()
+    const first = mountHome()
     await flushPromises()
+    first.unmount()
 
     fetch.mockImplementation(() => new Promise(() => {}))
     const again = mount(HomeView, { global: { plugins: [getActivePinia()!, testRouter()] } })
     expect(again.text()).not.toContain('LOADING')
     expect(again.findAll('li')).toHaveLength(1)
     expect(again.get('.intro__headline').text()).toBe('1 plant')
+  })
+
+  it('opens a new visit on the garden the device remembers, before the server answers', async () => {
+    stubApi({
+      '/api/me': Response.json({ id: 1, username: 'nikki' }),
+      '/api/plants': Response.json([plant(2, 'けんじ'), plant(1, 'nikki')]),
+    })
+    const first = mountHome()
+    await flushPromises()
+    first.unmount()
+
+    // A new visit: new stores, and a server that hasn't answered yet.
+    const fetch = vi.fn<() => Promise<Response>>(() => new Promise(() => {}))
+    vi.stubGlobal('fetch', fetch)
+    const again = mount(HomeView, { global: { plugins: [createPinia(), testRouter()] } })
+    expect(again.findAll('li')).toHaveLength(2)
+    expect(again.get('a[aria-label="My profile"]').text()).toBe('N')
+    // The refresh is already on its way, alongside the session check.
+    expect(fetch).toHaveBeenCalledWith('/api/plants')
+  })
+
+  it('shows empty tiles, not a blank page, on a first visit', async () => {
+    let answer!: (res: Response) => void
+    const fetch = stubApi({ '/api/me': Response.json({ id: 1, username: 'nikki' }) })
+    fetch.mockImplementation((url) =>
+      url === '/api/me'
+        ? Promise.resolve(Response.json({ id: 1, username: 'nikki' }))
+        : new Promise((resolve) => (answer = resolve)),
+    )
+    const wrapper = mountHome()
+    await flushPromises()
+    expect(wrapper.get('main').attributes('aria-busy')).toBe('true')
+    expect(wrapper.findAll('li')).toHaveLength(4)
+
+    answer(Response.json([plant(1, 'nikki')]))
+    await flushPromises()
+    expect(wrapper.get('main').attributes('aria-busy')).toBeUndefined()
+    expect(wrapper.findAll('li')).toHaveLength(1)
   })
 
   it('fetches every plant’s nikki ahead, once', async () => {

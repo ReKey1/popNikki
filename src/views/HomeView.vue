@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
-import { computed, onMounted } from 'vue'
+import { computed, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 
 import BaseAvatar from '@/components/BaseAvatar.vue'
 import BaseFab from '@/components/BaseFab.vue'
+import BasePhoto from '@/components/BasePhoto.vue'
 import BasePill from '@/components/BasePill.vue'
 import BaseWordmark from '@/components/BaseWordmark.vue'
 import NikkiTile from '@/components/NikkiTile.vue'
@@ -26,10 +27,14 @@ async function refresh() {
   if (res.ok) for (const plant of plants.value ?? []) void garden.prefetchPosts(plant.id)
 }
 
-// The garden from the last visit shows at once while this refresh runs.
-onMounted(async () => {
-  if (await session.load()) await refresh()
-})
+void session.load()
+// The garden from the last visit shows at once while this refresh runs. It doesn't wait for
+// the session check, and runs again if that turns out to be another member.
+watch(
+  () => me.value?.id,
+  (id) => id && refresh(),
+  { immediate: true },
+)
 // New nikki and badges show up without a reload.
 usePolling(() => me.value && refresh())
 </script>
@@ -60,8 +65,8 @@ usePolling(() => me.value && refresh())
         <BasePill v-if="fresh" tone="orange" class="intro__fresh">{{ fresh }} FRESH</BasePill>
       </div>
 
-      <ul class="grid">
-        <li v-for="plant in plants" :key="plant.id">
+      <ul class="grid pn-stagger">
+        <li v-for="(plant, i) in plants" :key="plant.id" :style="{ '--i': i }">
           <NikkiTile
             :to="`/plants/${plant.id}`"
             :name="plant.username"
@@ -75,6 +80,19 @@ usePolling(() => me.value && refresh())
       </ul>
 
       <div class="fab-dock"><BaseFab to="/new">NEW NIKKI</BaseFab></div>
+    </main>
+
+    <!-- Only on a first visit: after that the device remembers the garden. -->
+    <main v-else aria-busy="true">
+      <div class="intro">
+        <div>
+          <div class="intro__kicker mono-label">THE GARDEN</div>
+          <h2 class="intro__headline">&nbsp;</h2>
+        </div>
+      </div>
+      <ul class="grid" aria-hidden="true">
+        <li v-for="n in 4" :key="n"><BasePhoto /></li>
+      </ul>
     </main>
   </template>
 </template>
@@ -167,5 +185,10 @@ usePolling(() => me.value && refresh())
 .head__me {
   display: flex;
   border-radius: 50%;
+  transition: transform var(--dur-press);
+}
+
+.head__me:active {
+  transform: scale(0.92);
 }
 </style>

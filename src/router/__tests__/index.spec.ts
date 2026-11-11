@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { stubApi, testPinia } from '@/__tests__/helpers'
+import { useSessionStore } from '@/stores/session'
 import router from '../index'
 
 describe('router', () => {
@@ -31,6 +32,18 @@ describe('router', () => {
     expect(router.currentRoute.value.path).toBe('/plants/2/4')
 
     expect(fetch.mock.calls.filter(([url]) => url === '/api/me')).toHaveLength(1)
+  })
+
+  it('opens a members page at once for a member the device remembers', async () => {
+    testPinia()
+    const fetch = vi.fn<() => Promise<Response>>(() => new Promise(() => {}))
+    vi.stubGlobal('fetch', fetch)
+    useSessionStore().me = { id: 1, username: 'nikki' }
+
+    // The server hasn't answered, and the page doesn't wait for it.
+    await router.push('/plants/2')
+    expect(router.currentRoute.value.path).toBe('/plants/2')
+    expect(fetch).toHaveBeenCalledWith('/api/me')
   })
 
   it('opens the claim page without a session', async () => {

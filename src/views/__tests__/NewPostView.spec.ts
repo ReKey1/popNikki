@@ -53,7 +53,7 @@ describe('NewPostView', () => {
     const fetch = stubApi({ '/api/posts': Response.json({ id: 5 }, { status: 201 }) })
     const wrapper = await mountWithPhoto()
     expect(wrapper.get('img').attributes('src')).toBe('blob:preview')
-    expect(wrapper.text()).toContain('2:00 practice')
+    expect(wrapper.text()).toContain('roulette')
 
     await wrapper.get('textarea').setValue('first leaf')
     await wrapper.get('form').trigger('submit')

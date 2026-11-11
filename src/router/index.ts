@@ -2,7 +2,9 @@ import { createRouter, createWebHistory } from 'vue-router'
 
 import { useSessionStore } from '@/stores/session'
 import HomeView from '../views/HomeView.vue'
+import NewPostView from '../views/NewPostView.vue'
 import PlantView from '../views/PlantView.vue'
+import PracticeView from '../views/PracticeView.vue'
 import ProfileView from '../views/ProfileView.vue'
 
 declare module 'vue-router' {
@@ -12,8 +14,8 @@ declare module 'vue-router' {
   }
 }
 
-// The pages you move between are in the main bundle, so opening one never waits on a download.
-// The camera, claim and practice pages load on demand.
+// Every page a member moves between is in the main bundle, so opening one never waits on a
+// download. Only the claim page, seen once per tag, loads on demand.
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   // Back and forward restore the scroll position; a new page starts at the top.
@@ -24,7 +26,7 @@ const router = createRouter({
     {
       path: '/new',
       name: 'new-post',
-      component: () => import('../views/NewPostView.vue'),
+      component: NewPostView,
       meta: { requiresAuth: true },
     },
     { path: '/me', name: 'profile', component: ProfileView, meta: { requiresAuth: true } },
@@ -32,7 +34,7 @@ const router = createRouter({
       // Without an id, the practice waits for the upload that is still in progress.
       path: '/practice/:id(\\d+)?',
       name: 'practice',
-      component: () => import('../views/PracticeView.vue'),
+      component: PracticeView,
       props: true,
       meta: { requiresAuth: true },
     },
@@ -46,10 +48,13 @@ const router = createRouter({
   ],
 })
 
-// The session is fetched before the first page renders, then reused by every later navigation.
+// A member the device remembers gets the page at once, while the server confirms the session in
+// the background (App.vue sends them home if it says no). Anyone else waits for the answer.
+// It is asked for once, then reused by every later navigation.
 router.beforeEach(async (to) => {
   const session = useSessionStore()
-  await session.load()
+  const checked = session.load()
+  if (!session.me) await checked
   if (to.meta.requiresAuth && !session.me) return { name: 'home' }
 })
 

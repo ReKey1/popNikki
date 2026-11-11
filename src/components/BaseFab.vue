@@ -32,8 +32,8 @@ const { icon = '+', to } = defineProps<{
   cursor: pointer;
   box-shadow: var(--shadow-hard);
   transition:
-    transform 0.08s,
-    box-shadow 0.08s;
+    transform var(--dur-tap),
+    box-shadow var(--dur-tap);
 }
 
 .fab:active {

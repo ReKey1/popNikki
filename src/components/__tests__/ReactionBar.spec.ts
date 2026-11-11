@@ -23,4 +23,19 @@ describe('ReactionBar', () => {
 
     expect(wrapper.emitted('pick')).toEqual([['🔥'], [null]])
   })
+
+  it('sends the picked emoji drifting up, until its animation ends', async () => {
+    const wrapper = mount(ReactionBar, { props: { selected: '💧' } })
+    const button = (emoji: string) => wrapper.findAll('button').find((b) => b.text() === emoji)!
+
+    // Taking a reaction away sends nothing up.
+    await button('💧').trigger('click')
+    expect(wrapper.find('.bar__float').exists()).toBe(false)
+
+    await button('🔥').trigger('click')
+    expect(wrapper.findAll('.bar__float').map((f) => f.text())).toEqual(['🔥'])
+
+    await wrapper.get('.bar__float').trigger('animationend')
+    expect(wrapper.find('.bar__float').exists()).toBe(false)
+  })
 })

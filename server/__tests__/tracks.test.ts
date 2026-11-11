@@ -5,30 +5,6 @@ import { addUser, db, logIn, request, resetDb } from './helpers'
 
 const AUDIO = new Uint8Array(Array.from({ length: 100 }, (_, i) => i))
 
-describe('next track', () => {
-  beforeEach(resetDb)
-
-  it('needs a session', async () => {
-    expect((await request('/api/tracks/next')).status).toBe(401)
-  })
-
-  it('picks a track without starting any clock', async () => {
-    const cookie = await logIn((await addUser('nikki')).token)
-    const get = async () =>
-      (await request('/api/tracks/next', { headers: { Cookie: cookie } })).json()
-    expect(await get()).toEqual({ track: null })
-
-    const track = await db
-      .prepare("INSERT INTO tracks (title, r2_key) VALUES ('beat', 'tracks/beat.mp3') RETURNING id")
-      .first<{ id: number }>()
-    expect(await get()).toEqual({ track: { id: track!.id, title: 'beat' } })
-    const started = await db
-      .prepare('SELECT COUNT(*) AS n FROM posts WHERE music_started_at IS NOT NULL')
-      .first<{ n: number }>()
-    expect(started!.n).toBe(0)
-  })
-})
-
 describe('track audio', () => {
   let cookie: string
   let path: string

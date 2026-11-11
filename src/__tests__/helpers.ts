@@ -15,6 +15,8 @@ export function testRouter(history: RouterHistory = createMemoryHistory()) {
 
 /** A fresh, empty set of stores, active for the test and ready to pass to `mount`. */
 export function testPinia() {
+  // The stores remember the viewer and the garden on the device.
+  localStorage.clear()
   const pinia = createPinia()
   setActivePinia(pinia)
   return pinia
@@ -31,10 +33,15 @@ export function stubDialog() {
   }
 }
 
-/** Stubs `fetch` with fixed responses per URL; anything else gets a 404. */
+/**
+ * Stubs `fetch` with fixed responses per URL; anything else gets a 404.
+ * A key such as `POST /api/roll` answers only that method, ahead of the plain URL.
+ */
 export function stubApi(routes: Record<string, Response>) {
   const fetch = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(
-    async (url) => routes[url]?.clone() ?? Response.json({}, { status: 404 }),
+    async (url, init) =>
+      (routes[`${init?.method ?? 'GET'} ${url}`] ?? routes[url])?.clone() ??
+      Response.json({}, { status: 404 }),
   )
   vi.stubGlobal('fetch', fetch)
   return fetch

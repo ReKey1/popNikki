@@ -1,11 +1,15 @@
 import { env } from 'cloudflare:workers'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { DANCE_MS, LIMITS } from '../routes/posts'
+import { DEFAULT_SECONDS, LIMITS } from '../routes/posts'
 import { addUser, db, logIn, request, resetDb } from './helpers'
 
-const jpeg = (bytes = 10, type = 'image/jpeg') =>
-  new File([new Uint8Array(bytes)], 'x.jpg', { type })
+/** A file of the given size that starts with the JPEG signature. */
+function jpeg(bytes = 10, type = 'image/jpeg') {
+  const data = new Uint8Array(bytes)
+  data.set([0xff, 0xd8, 0xff].slice(0, bytes))
+  return new File([data], 'x.jpg', { type })
+}
 
 function upload(cookie: string, fields: Record<string, string | File>) {
   const form = new FormData()
@@ -97,6 +101,9 @@ describe('posts', () => {
       { photo: jpeg(10, 'image/png'), thumb: jpeg() },
       { photo: jpeg(), thumb: jpeg(LIMITS.thumb + 1) },
       { photo: jpeg(), thumb: jpeg(0) },
+      // Called a JPEG, but the bytes aren't one.
+      { photo: new File([new Uint8Array(10)], 'x.jpg', { type: 'image/jpeg' }), thumb: jpeg() },
+      { photo: jpeg(), thumb: new File(['<svg/>'], 'x.jpg', { type: 'image/jpeg' }) },
       { photo: jpeg(), thumb: jpeg(), description: 'x'.repeat(LIMITS.description + 1) },
     ]
     for (const fields of bad) expect((await upload(cookie, fields)).status).toBe(400)
@@ -109,6 +116,20 @@ describe('posts', () => {
       thumb: jpeg(),
     })
     expect(res.status).toBe(413)
+  })
+
+  it('stops taking uploads once there are too many drafts', async () => {
+    await uploadPublished(cookie) // published posts don't count
+    await db.batch(
+      Array.from({ length: LIMITS.drafts }, () =>
+        db.prepare('INSERT INTO posts (user_id, created_at) VALUES (?, ?)').bind(userId, 1),
+      ),
+    )
+    const res = await upload(cookie, { photo: jpeg(), thumb: jpeg() })
+    expect(res.status).toBe(409)
+
+    await db.prepare('DELETE FROM posts WHERE id = (SELECT MAX(id) FROM posts)').run()
+    expect((await upload(cookie, { photo: jpeg(), thumb: jpeg() })).status).toBe(201)
   })
 
   it("returns 404 for a photo of an unknown post or someone else's draft", async () => {
@@ -202,11 +223,14 @@ describe('posts', () => {
       (await upload(cookie, { photo: jpeg(), thumb: jpeg() })).json<{ id: number }>()
     const row = (id: number) =>
       db
-        .prepare('SELECT track_id, music_started_at, published_at FROM posts WHERE id = ?')
+        .prepare(
+          'SELECT track_id, music_started_at, dance_seconds, published_at FROM posts WHERE id = ?',
+        )
         .bind(id)
         .first<{
           track_id: number | null
           music_started_at: number | null
+          dance_seconds: number | null
           published_at: number | null
         }>()
     const addTrack = async (title: string) => {
@@ -216,6 +240,22 @@ describe('posts', () => {
         .first<{ id: number }>()
       return track!.id
     }
+    /** Gives the member a roll, as if the roulette had landed on it. */
+    const setRoll = (seconds: number, trackId: number) =>
+      db
+        .prepare('INSERT INTO rolls (user_id, seconds, track_id, created_at) VALUES (?, ?, ?, ?)')
+        .bind(userId, seconds, trackId, Date.now())
+        .run()
+    const rolls = async () =>
+      (await db.prepare('SELECT COUNT(*) AS n FROM rolls').first<{ n: number }>())!.n
+    /** Moves the start of a draft's music back, as if it had played for `seconds`. */
+    const danceFor = (id: number, seconds: number) =>
+      db
+        .prepare('UPDATE posts SET music_started_at = ? WHERE id = ?')
+        .bind(Date.now() - seconds * 1000, id)
+        .run()
+
+    afterEach(() => vi.restoreAllMocks())
 
     it('lists only your own drafts, newest first', async () => {
       await draft()
@@ -277,62 +317,42 @@ describe('posts', () => {
       expect((await row(id))!.published_at).toBeGreaterThan(0)
     })
 
-    it('starts a track and the clock', async () => {
+    it('starts the clock for the rolled time and song', async () => {
+      await addTrack('other')
       const trackId = await addTrack('beat')
+      await setRoll(90, trackId)
       const { id } = await draft()
       const res = await post(`/api/posts/${id}/start`)
-      expect(await res.json()).toEqual({ track: { id: trackId, title: 'beat' } })
-      expect(await row(id)).toMatchObject({ track_id: trackId, published_at: null })
+      expect(await res.json()).toEqual({ seconds: 90, track: { id: trackId, title: 'beat' } })
+      expect(await row(id)).toMatchObject({
+        track_id: trackId,
+        dance_seconds: 90,
+        published_at: null,
+      })
       expect((await row(id))!.music_started_at).toBeGreaterThan(0)
     })
 
-    it('plays the track the page already loaded, or picks one if it is gone', async () => {
-      await addTrack('a')
-      const chosen = await addTrack('b')
-      const start = async (trackId: number) => {
-        const { id } = await draft()
-        const res = await request(`/api/posts/${id}/start`, {
-          method: 'POST',
-          headers: {
-            Cookie: cookie,
-            Origin: 'http://localhost',
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ track_id: trackId }),
-        })
-        return { id, body: await res.json<{ track: { id: number } }>() }
-      }
-      const { id, body } = await start(chosen)
-      expect(body.track.id).toBe(chosen)
-      expect(await row(id)).toMatchObject({ track_id: chosen })
-
-      expect((await start(9999)).body.track.id).toBeGreaterThan(0)
+    it('spins the roulette at the start if the page never did', async () => {
+      const trackId = await addTrack('beat')
+      // Halfway through the odds of a member with no nikki yet: one minute.
+      vi.spyOn(Math, 'random').mockReturnValue(0.5)
+      const { id } = await draft()
+      const res = await post(`/api/posts/${id}/start`)
+      expect(await res.json()).toEqual({ seconds: 60, track: { id: trackId, title: 'beat' } })
+      expect(await rolls()).toBe(1)
     })
 
-    it('avoids your three most recent tracks', async () => {
-      const ids = [
-        await addTrack('a'),
-        await addTrack('b'),
-        await addTrack('c'),
-        await addTrack('d'),
-      ]
-      const used: number[] = []
-      for (let i = 0; i < 4; i++) {
-        const { id } = await draft()
-        const res = await post(`/api/posts/${id}/start`)
-        const { track } = await res.json<{ track: { id: number } }>()
-        used.push(track.id)
-        // Keep the start times strictly ordered.
-        await db
-          .prepare('UPDATE posts SET music_started_at = ? WHERE id = ?')
-          .bind(1000 + i, id)
-          .run()
-      }
-      expect(new Set(used)).toEqual(new Set(ids))
+    it('publishes at once on a roll of zero seconds, which uses the roll up', async () => {
+      await setRoll(0, await addTrack('beat'))
+      const { id } = await draft()
+      const res = await post(`/api/posts/${id}/start`)
+      expect(await res.json()).toEqual({ published: true })
+      expect((await row(id))!.published_at).toBeGreaterThan(0)
+      expect(await rolls()).toBe(0)
     })
 
-    it('refuses to publish before the dance is over', async () => {
-      await addTrack('beat')
+    it('refuses to publish before the rolled time is over', async () => {
+      await setRoll(150, await addTrack('beat'))
       const { id } = await draft()
       expect((await post(`/api/posts/${id}/publish`)).status).toBe(409)
 
@@ -340,24 +360,52 @@ describe('posts', () => {
       const early = await post(`/api/posts/${id}/publish`)
       expect(early.status).toBe(409)
       const body = await early.json<{ retry_after: number }>()
-      expect(body.retry_after).toBeGreaterThan(110)
-      expect(body.retry_after).toBeLessThanOrEqual(120)
+      expect(body.retry_after).toBeGreaterThan(140)
+      expect(body.retry_after).toBeLessThanOrEqual(150)
+
+      await danceFor(id, 149)
+      expect((await post(`/api/posts/${id}/publish`)).status).toBe(409)
       expect((await row(id))!.published_at).toBeNull()
     })
 
-    it('publishes after two minutes', async () => {
-      await addTrack('beat')
+    it('publishes once the rolled time has passed, which uses the roll up', async () => {
+      await setRoll(30, await addTrack('beat'))
       const { id } = await draft()
       await post(`/api/posts/${id}/start`)
-      await db
-        .prepare('UPDATE posts SET music_started_at = ? WHERE id = ?')
-        .bind(Date.now() - DANCE_MS, id)
-        .run()
+      await danceFor(id, 30)
 
       expect((await post(`/api/posts/${id}/publish`)).status).toBe(204)
       expect((await row(id))!.published_at).toBeGreaterThan(0)
+      expect(await rolls()).toBe(0)
       // No longer a draft.
       expect((await post(`/api/posts/${id}/publish`)).status).toBe(404)
+    })
+
+    it('keeps the roll when a draft is quit or deleted, so it cannot be rolled again', async () => {
+      await setRoll(180, await addTrack('beat'))
+      const first = await draft()
+      await post(`/api/posts/${first.id}/start`)
+      await request(`/api/posts/${first.id}`, {
+        method: 'DELETE',
+        headers: { Cookie: cookie, Origin: 'http://localhost' },
+      })
+
+      const second = await draft()
+      const res = await post(`/api/posts/${second.id}/start`)
+      expect((await res.json<{ seconds: number }>()).seconds).toBe(180)
+      // Starting over only resets the clock.
+      await post(`/api/posts/${second.id}/start`)
+      expect((await row(second.id))!.dance_seconds).toBe(180)
+      expect(await rolls()).toBe(1)
+    })
+
+    it('asks for two minutes from a draft started before the roulette', async () => {
+      await addTrack('beat')
+      const { id } = await draft()
+      await danceFor(id, DEFAULT_SECONDS - 1)
+      expect((await post(`/api/posts/${id}/publish`)).status).toBe(409)
+      await danceFor(id, DEFAULT_SECONDS)
+      expect((await post(`/api/posts/${id}/publish`)).status).toBe(204)
     })
 
     it("can't start or publish someone else's draft", async () => {

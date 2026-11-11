@@ -10,15 +10,23 @@ export type AppEnv = { Bindings: Env; Variables: { user: User } }
 export const SESSION_COOKIE = 'session'
 const SESSION_SECONDS = 400 * 24 * 60 * 60 // the longest Max-Age browsers accept
 
-/** Creates a session row (hash only) and sets the session cookie. */
+/**
+ * Creates a session row (hash only) and sets the session cookie. The session this device had
+ * before is replaced, and sessions that have run out are cleared away.
+ */
 export async function startSession(c: Context<AppEnv>, userId: number): Promise<void> {
   const token = newToken(32)
+  const old = getCookie(c, SESSION_COOKIE)
   const now = Date.now()
-  await c.env.DB.prepare(
-    'INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)',
-  )
-    .bind(await hashToken(token), userId, now, now + SESSION_SECONDS * 1000)
-    .run()
+  await c.env.DB.batch([
+    c.env.DB.prepare('DELETE FROM sessions WHERE token_hash = ? OR expires_at <= ?').bind(
+      old ? await hashToken(old) : '',
+      now,
+    ),
+    c.env.DB.prepare(
+      'INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)',
+    ).bind(await hashToken(token), userId, now, now + SESSION_SECONDS * 1000),
+  ])
   setCookie(c, SESSION_COOKIE, token, {
     httpOnly: true,
     secure: true,
@@ -37,6 +45,8 @@ export async function endSession(c: Context<AppEnv>): Promise<void> {
       .run()
   }
   deleteCookie(c, SESSION_COOKIE, { path: '/', secure: true })
+  // Photos stay in the browser's cache for a year; logging out removes them from this device.
+  c.header('Clear-Site-Data', '"cache", "storage"')
 }
 
 /** Rejects the request with 401 unless it carries a valid session of a non-revoked user. */

@@ -1,0 +1,7 @@
+/* The Japanese faces. Each lists over a hundred character ranges, so together they are most of
+   the app's CSS. `main.ts` loads this file after the first paint; until then, and for any
+   character the faces lack, the phone's own Japanese font shows. */
+@import '@fontsource/dela-gothic-one/400.css';
+@import '@fontsource/zen-kaku-gothic-new/400.css';
+@import '@fontsource/zen-kaku-gothic-new/500.css';
+@import '@fontsource/zen-kaku-gothic-new/700.css';

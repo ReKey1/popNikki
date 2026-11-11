@@ -16,8 +16,17 @@
   display: none;
 }
 
+html {
+  /* Text keeps its size when the phone turns, and a tap shows no grey flash: every control
+     has its own pressed look. */
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
 body {
   margin: 0;
+  /* A tap acts at once: no wait to see whether it becomes a double-tap zoom. */
+  touch-action: manipulation;
   background: var(--paper);
   color: var(--ink);
   font-family: var(--font-body);
@@ -28,6 +37,21 @@ body {
   -webkit-touch-callout: none;
   -webkit-user-select: none;
   user-select: none;
+}
+
+/* The browser around the page takes the colour of the page (see usePageColor). */
+html[data-page='night'] body {
+  background: var(--night);
+}
+
+html[data-page='moss'] body {
+  background: var(--moss);
+}
+
+/* Keyboard focus shows the same way on every control. */
+:focus-visible {
+  outline: 2px solid var(--orange);
+  outline-offset: 2px;
 }
 
 /* Images and icons can't be dragged out either. */

@@ -5,24 +5,35 @@ import { useRouter } from 'vue-router'
 import BaseButton from '@/components/BaseButton.vue'
 import BaseIconButton from '@/components/BaseIconButton.vue'
 import TimerRing from '@/components/TimerRing.vue'
-import { errorMessage, type StartResult, type Track } from '@/lib/api'
+import { usePageColor } from '@/composables/usePageColor'
+import { useRoulette } from '@/composables/useRoulette'
+import { errorMessage, type Roll, type StartResult, type Track } from '@/lib/api'
 import { leaveStep } from '@/lib/navigation'
+import { useGardenStore } from '@/stores/garden'
 import { usePendingPostStore } from '@/stores/pendingPost'
+import { useSessionStore } from '@/stores/session'
 
 /** Without an id, the post is still uploading in the background (see NewPostView). */
 const props = defineProps<{ id?: string }>()
 const router = useRouter()
 const pending = usePendingPostStore()
+const garden = useGardenStore()
+const session = useSessionStore()
+const { spinning, clock: spinClock, title: spinTitle, spin: spinRoulette } = useRoulette()
 
-/** The client clock only drives the display. The server checks the real two minutes. */
-const TOTAL = 120
 /** Seconds the music takes to fade in, and to fade out so it's silent when the timer ends. */
 const FADE_IN = 1.5
 const FADE_OUT = 3
 
 const phase = ref<'ready' | 'starting' | 'running' | 'paused' | 'publishing' | 'done'>('ready')
-const remaining = ref(TOTAL)
-const track = ref<Track | null>(null)
+/** What the roulette landed on: how long to dance, and to which song. Null until it has. */
+const roll = ref<Roll | null>(null)
+/** The roll was spun on this page just now, so it gets its landing animation. */
+const justLanded = ref(false)
+/** The playlist is empty: there is nothing to roll, and START posts at once. */
+const noMusic = ref(false)
+/** Seconds left. This clock only drives the display. The server checks the real time. */
+const remaining = ref(0)
 const error = ref('')
 /** The draft being danced out; null until its upload finishes. */
 const postId = ref(props.id ? Number(props.id) : null)
@@ -35,6 +46,7 @@ let wakeLock: WakeLockSentinel | null = null
 let retried = false
 let mixer: { ctx: AudioContext; gain: AudioParam } | null = null
 let fadingOut = false
+let loadingTrack: number | null = null
 
 /**
  * Routes the music through a gain node: iPhone Safari ignores `audio.volume`, so this is the
@@ -113,48 +125,77 @@ async function waitForUpload(upload: Promise<number> | null) {
   }
 }
 
-function setTrack(next: Track) {
-  track.value = next
-  if (audio.value) audio.value.src = `/api/tracks/${next.id}/audio`
+/** Starts downloading a song, so it is ready to play by the time of the tap on START. */
+function preload(track: Track) {
+  if (!audio.value || loadingTrack === track.id) return
+  loadingTrack = track.id
+  audio.value.src = `/api/tracks/${track.id}/audio`
 }
 
-/** Picks the song as the page opens, so it loads while the dancer gets ready. */
-async function loadTrack() {
-  const res = await fetch('/api/tracks/next')
-  // On failure START picks the song instead.
+/** Takes a roll as the dance to do. */
+function land(next: Roll) {
+  roll.value = next
+  remaining.value = next.seconds
+  preload(next.track)
+}
+
+/** Shows the roll the member already has: coming back to a draft doesn't spin again. */
+async function loadRoll() {
+  const res = await fetch('/api/roll')
+  // On failure SPIN asks the server instead.
   if (!res.ok) return
-  const { track: next } = (await res.json()) as { track: Track | null }
-  if (next && phase.value === 'ready') setTrack(next)
+  const { roll: waitingRoll } = (await res.json()) as { roll: Roll | null }
+  if (waitingRoll && !roll.value && !spinning.value) land(waitingRoll)
+}
+
+async function requestRoll(): Promise<Roll | null> {
+  const res = await fetch('/api/roll', { method: 'POST' })
+  if (!res.ok) throw new Error(await errorMessage(res))
+  const { roll: next } = (await res.json()) as { roll: Roll | null }
+  // The song loads while the roulette is still turning.
+  if (next) preload(next.track)
+  return next
+}
+
+/** Spins the roulette. The server rolls once and remembers, so spinning again changes nothing. */
+async function spin() {
+  error.value = ''
+  try {
+    const next = await spinRoulette(requestRoll())
+    if (next) {
+      land(next)
+      justLanded.value = true
+    } else noMusic.value = true
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : String(err)
+  }
 }
 
 async function start() {
   connectMixer()
   phase.value = 'starting'
   error.value = ''
-  const res = await fetch(`/api/posts/${postId.value}/start`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ track_id: track.value?.id }),
-  })
+  const res = await fetch(`/api/posts/${postId.value}/start`, { method: 'POST' })
   if (!res.ok) {
     error.value = await errorMessage(res)
     phase.value = 'ready'
     return
   }
   const result: StartResult = await res.json()
-  // No tracks on the playlist: the server published straight away.
+  // A roll of zero seconds, or an empty playlist: the server published straight away.
   if ('published' in result) {
     remaining.value = 0
-    phase.value = 'done'
+    posted()
     return
   }
-  // The server may pick another song, if the loaded one has left the playlist.
-  if (result.track.id !== track.value?.id) setTrack(result.track)
+  // The server's roll is the one that counts.
+  land(result)
   await run()
 }
 
 function toggle() {
   if (uploadFailed.value) void waitForUpload(pending.again())
+  else if (waiting.value) void spin()
   else if (phase.value === 'ready' && postId.value !== null) void start()
   else if (phase.value === 'running') pause()
   else if (phase.value === 'paused') void run()
@@ -173,7 +214,7 @@ async function finish() {
 async function publish() {
   const res = await fetch(`/api/posts/${postId.value}/publish`, { method: 'POST' })
   if (res.ok) {
-    phase.value = 'done'
+    posted()
     return
   }
   const body = (await res.json().catch(() => null)) as { error?: string; retry_after?: number }
@@ -186,13 +227,21 @@ async function publish() {
   error.value = body?.error ?? `Something went wrong (${res.status})`
 }
 
+/** Shows the celebration, and brings the garden up to date before the member gets there. */
+function posted() {
+  phase.value = 'done'
+  if (garden.drafts) garden.drafts = garden.drafts.filter((d) => d.id !== postId.value)
+  void garden.loadPlants().catch(() => {})
+  if (session.me) void garden.loadPosts(session.me.id).catch(() => {})
+}
+
 // Leaving the page pauses the music and the timer.
 function onVisibility() {
   if (document.visibilityState === 'hidden') pause()
 }
 onMounted(() => {
   document.addEventListener('visibilitychange', onVisibility)
-  void loadTrack().catch(() => {})
+  void loadRoll().catch(() => {})
   if (postId.value === null) void waitForUpload(pending.upload)
 })
 onBeforeUnmount(() => {
@@ -203,12 +252,51 @@ onBeforeUnmount(() => {
   void wakeLock?.release()
 })
 
+usePageColor(() => (phase.value === 'done' ? 'moss' : 'night'))
+
 const uploading = computed(() => postId.value === null && !uploadFailed.value)
+/** The roulette is still to be spun. */
+const waiting = computed(() => !roll.value && !noMusic.value)
+const preparing = computed(() => phase.value === 'ready' || phase.value === 'starting')
+
+const ring = computed(() => {
+  if (spinning.value) return 'spinning'
+  if (waiting.value) return 'idle'
+  return justLanded.value && preparing.value ? 'landed' : undefined
+})
+const ringDisplay = computed(() => {
+  if (spinning.value) return spinClock.value || '?:??'
+  return waiting.value ? '?:??' : undefined
+})
+// Until the roulette lands, the dial and the song say nothing. Every result is shown alike.
+const ringCaption = computed(() => (spinning.value || waiting.value ? '' : undefined))
+const kicker = computed(() => {
+  if (spinning.value || waiting.value) return 'ROULETTE'
+  if (!roll.value) return 'READY?'
+  if (!roll.value.seconds) return ''
+  return preparing.value ? 'UP NEXT' : 'NOW PLAYING'
+})
+const title = computed(() => {
+  if (spinning.value) return spinTitle.value || '???'
+  if (waiting.value) return '???'
+  if (!roll.value) return 'Press start and dance'
+  return roll.value.seconds ? roll.value.track.title : ''
+})
 const buttonLabel = computed(() => {
   if (uploadFailed.value) return 'RETRY'
+  if (spinning.value || waiting.value) return 'SPIN'
   if (uploading.value) return 'UPLOADING…'
-  return phase.value === 'running' ? 'PAUSE' : phase.value === 'paused' ? 'RESUME' : 'START'
+  if (phase.value === 'running') return 'PAUSE'
+  if (phase.value === 'paused') return 'RESUME'
+  return roll.value?.seconds === 0 ? 'POST' : 'START'
 })
+const buttonDisabled = computed(
+  () =>
+    spinning.value ||
+    (uploading.value && !waiting.value) ||
+    phase.value === 'starting' ||
+    phase.value === 'publishing',
+)
 </script>
 
 <template>
@@ -237,26 +325,41 @@ const buttonLabel = computed(() => {
     </header>
 
     <div class="stage">
-      <TimerRing :remaining="remaining" :running="phase === 'running'" />
+      <TimerRing
+        :remaining="remaining"
+        :total="roll?.seconds"
+        :running="phase === 'running'"
+        :display="ringDisplay"
+        :caption="ringCaption"
+        :roulette="ring"
+      />
       <span class="stage__note mono-label">QUIT = SAVED TO DRAFTS</span>
     </div>
 
     <div class="deck">
-      <div class="deck__kicker mono-label">
-        {{
-          !track ? 'READY?' : phase === 'ready' || phase === 'starting' ? 'UP NEXT' : 'NOW PLAYING'
-        }}
+      <div class="deck__kicker mono-label">{{ kicker }}</div>
+      <div
+        :class="[
+          'deck__title',
+          {
+            'deck__title--spin': spinning || waiting,
+            'deck__title--landed': ring === 'landed',
+          },
+        ]"
+        aria-live="polite"
+      >
+        {{ title }}
       </div>
-      <div class="deck__title">{{ track?.title ?? 'Press start and dance' }}</div>
-      <p v-if="phase === 'publishing' && !error" class="deck__status" aria-live="polite">
-        Posting…
+      <!-- Always there, so nothing below it moves when the line comes and goes. -->
+      <p class="deck__note mono-label" aria-live="polite">
+        {{ phase === 'publishing' && !error ? 'Posting…' : '' }}
       </p>
       <p v-if="error" class="deck__error" role="alert">{{ error }}</p>
       <div class="deck__play">
         <BaseButton
           variant="accent"
           :full-width="false"
-          :disabled="uploading || phase === 'starting' || phase === 'publishing'"
+          :disabled="buttonDisabled"
           class="deck__btn"
           @click="toggle"
           >{{ buttonLabel }}</BaseButton
@@ -264,7 +367,7 @@ const buttonLabel = computed(() => {
       </div>
     </div>
 
-    <!-- Its src is set as soon as the server picks the track, so it loads before START. -->
+    <!-- Its src is set as soon as the roulette picks the song, so it loads before START. -->
     <audio ref="audio" preload="auto" loop></audio>
   </main>
 </template>
@@ -316,27 +419,41 @@ const buttonLabel = computed(() => {
 }
 
 .deck__kicker {
+  min-height: 13px;
   font: var(--type-mono-meta);
   letter-spacing: var(--tracking-wide);
   color: var(--orange);
 }
 
 .deck__title {
+  /* Room for one line, so the button stays put while the roulette turns. */
+  min-height: 30px;
   margin-top: 6px;
   font: var(--type-title);
+  overflow-wrap: anywhere;
 }
 
-.deck__status,
-.deck__error {
+/* The hidden song title keeps a steady width while it flickers. */
+.deck__title--spin {
+  font-family: var(--font-mono);
+  color: var(--on-night-3);
+}
+
+.deck__title--landed {
+  animation: pn-in 0.5s var(--ease-spring) both;
+}
+
+.deck__note {
+  min-height: 14px;
   margin: 10px 0 0;
-  font: var(--type-small);
-}
-
-.deck__status {
+  font: var(--type-mono-meta);
+  letter-spacing: var(--tracking-label);
   color: var(--on-night-2);
 }
 
 .deck__error {
+  margin: 10px 0 0;
+  font: var(--type-small);
   color: var(--orange);
 }
 
@@ -347,7 +464,8 @@ const buttonLabel = computed(() => {
 }
 
 .deck__btn {
-  min-width: 72px;
+  /* Wide enough for most labels, so the button keeps its size as they change. */
+  min-width: 132px;
   height: 72px;
   padding: 0 24px;
   font-size: 16px;
@@ -367,14 +485,24 @@ const buttonLabel = computed(() => {
   flex-direction: column;
   align-items: center;
   width: 100%;
-  animation: pn-in 0.5s var(--ease-spring) both;
+}
+
+/* The word lands first, then the rest follows it in. */
+.done__text,
+.done__actions {
+  animation: pn-rise 0.32s var(--ease-out) 0.18s backwards;
+}
+
+.done__actions {
+  animation-delay: 0.26s;
 }
 
 .done__title {
   margin: 0;
   font: var(--type-celebrate);
   color: var(--ink);
-  transform: rotate(-5deg);
+  rotate: -5deg;
+  animation: pn-in 0.5s var(--ease-spring) both;
 }
 
 .done__text {

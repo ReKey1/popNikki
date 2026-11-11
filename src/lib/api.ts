@@ -24,8 +24,10 @@ export type PlantPosts = { owner: Me; posts: Post[] }
 export type Draft = { id: number; description: string; created_at: number }
 /** A song on the playlist. */
 export type Track = { id: number; title: string }
-/** The answer to starting the music: a track, or published at once when there is none. */
-export type StartResult = { track: Track } | { published: true }
+/** What the roulette landed on for the next nikki: how long to dance, and to which song. */
+export type Roll = { seconds: number; track: Track }
+/** The answer to starting the music: the roll being danced, or published at once. */
+export type StartResult = Roll | { published: true }
 
 /** Reads the `error` message from a failed API response. */
 export async function errorMessage(res: Response): Promise<string> {

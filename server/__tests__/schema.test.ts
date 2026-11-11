@@ -19,7 +19,7 @@ async function count(table: string): Promise<number> {
 describe('D1 schema', () => {
   beforeEach(async () => {
     await db.batch(
-      ['reactions', 'plant_views', 'sessions', 'posts', 'tracks', 'users'].map((t) =>
+      ['rolls', 'reactions', 'plant_views', 'sessions', 'posts', 'tracks', 'users'].map((t) =>
         db.prepare(`DELETE FROM ${t}`),
       ),
     )
