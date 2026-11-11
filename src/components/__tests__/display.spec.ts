@@ -24,6 +24,22 @@ describe('BasePhoto', () => {
     expect(wrapper.get('img').attributes()).toMatchObject({ src: '/p.jpg', alt: 'My plant' })
     expect(wrapper.text()).toBe('')
   })
+
+  it('brings a loading image in once it has arrived', async () => {
+    const wrapper = mount(BasePhoto, { props: { label: 'plant photo' } })
+    await wrapper.setProps({ src: '/p.jpg' })
+    const img = wrapper.get('img')
+    expect(img.classes()).not.toContain('photo__img--shown')
+
+    await img.trigger('load')
+    expect(img.classes()).toContain('photo__img--shown')
+  })
+
+  it('shows a small version behind the image while it loads', () => {
+    const wrapper = mount(BasePhoto, { props: { src: '/p.jpg', placeholder: '/small.jpg' } })
+    expect(wrapper.attributes('style')).toContain('url("/small.jpg")')
+    expect(wrapper.attributes('style')).toContain('--stripes-md')
+  })
 })
 
 describe('BaseAvatar', () => {
@@ -107,6 +123,32 @@ describe('TimerRing', () => {
         .get('[role="timer"]')
         .text(),
     ).toBe('0:00')
+  })
+
+  it('counts down from any total, and from none', () => {
+    const fill = (props: { remaining: number; total: number }) =>
+      mount(TimerRing, { props }).get('.ring__fill').attributes('style')
+    expect(fill({ remaining: 45, total: 180 })).toContain('270deg')
+    expect(fill({ remaining: 15, total: 30 })).toContain('180deg')
+    expect(fill({ remaining: 0, total: 0 })).toContain(' 0deg')
+  })
+
+  it('becomes the roulette: it shows what it is given and circles until it lands', async () => {
+    const wrapper = mount(TimerRing, {
+      props: { remaining: 0, display: '?:??', caption: '', roulette: 'idle' },
+    })
+    expect(wrapper.get('[role="timer"]').text()).toBe('?:??')
+    expect(wrapper.get('.ring').classes()).toContain('ring--idle')
+    expect(wrapper.get('.ring__fill').attributes('style')).toBeUndefined()
+
+    await wrapper.setProps({ display: '7:31', roulette: 'spinning' })
+    expect(wrapper.get('[role="timer"]').text()).toBe('7:31')
+    expect(wrapper.get('.ring').classes()).toContain('ring--spinning')
+
+    await wrapper.setProps({ remaining: 90, total: 90, display: undefined, roulette: 'landed' })
+    expect(wrapper.get('[role="timer"]').text()).toBe('1:30')
+    expect(wrapper.find('.ring__burst').exists()).toBe(true)
+    expect(wrapper.get('.ring__fill').attributes('style')).toContain('conic-gradient')
   })
 
   it('caps its width at size and shrinks with the screen', () => {

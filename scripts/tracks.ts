@@ -1,3 +1,5 @@
+import { sqlString } from './sql.ts'
+
 /** Audio formats every target browser plays, including Safari on iPhone. */
 export const AUDIO_TYPES: Record<string, string> = {
   '.mp3': 'audio/mpeg',
@@ -6,8 +8,6 @@ export const AUDIO_TYPES: Record<string, string> = {
 
 export type TrackUpload = { file: string; key: string; contentType: string }
 export type NewTracks = { uploads: TrackUpload[]; sql: string; skipped: string[] }
-
-const sqlString = (value: string) => `'${value.replaceAll("'", "''")}'`
 
 /**
  * Plans the upload of the given audio file names. The name without its extension becomes the

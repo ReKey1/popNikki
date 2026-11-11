@@ -110,7 +110,7 @@ Rules:
 - Use long-lived, server-set cookies with `HttpOnly`, `Secure`, and `SameSite=Lax`. Store only a hash of the session token.
 - Don't rely on `localStorage` for login, because Safari may clear it after a period without use.
 - Tapping the tag on a new device creates a new session for that device.
-- Provide an admin script that revokes a tag, deletes its sessions, and can issue a replacement token for the same user.
+- Provide an admin script that revokes a tag, deletes its sessions, and can issue a replacement token for the same user (`npm run users:revoke`).
 
 Known limitation: anyone who taps a tag or obtains its URL can log in as that person. This is accepted for a group of friends. NTAG 424 DNA tags generate a new code per tap and stop copied links from working, but they cost more and take more work.
 
@@ -120,7 +120,8 @@ The schema is in [migrations/0001_initial_schema.sql](migrations/0001_initial_sc
 
 - `users`: one row per tag. It holds `token_hash` (SHA-256 of the tag token), `username` (NULL until claimed, unique ignoring case), `last_login_at` and `revoked_at`. Replacing a tag means a new `token_hash` on the same row.
 - `sessions`: one row per logged-in device, keyed by the SHA-256 hash of its cookie.
-- `posts`: growth entries with `description`, `photo_key`, `thumb_key`, `track_id` and `music_started_at`. A post is a draft while `published_at` is NULL.
+- `posts`: growth entries with `description`, `photo_key`, `thumb_key`, `track_id`, `music_started_at` and `dance_seconds`. A post is a draft while `published_at` is NULL.
+- `rolls`: one row per member with the roulette's result for their next post (`seconds` and `track_id`). It is deleted when a post is published (migration 0004).
 - `tracks`: the playlist, with just a `title` and an `r2_key` (simplified in migration 0002).
 - `plant_views`: `(viewer_id, owner_id) -> last_viewed_at`, for update badges.
 
@@ -150,20 +151,22 @@ Rough storage estimate: 20 people posting a 350 KB photo weekly adds about 365 M
 
 When the user taps Send:
 
-1. The tap handler starts the audio, since mobile browsers need a user gesture.
-2. The server creates a draft, chooses a track that avoids the user's last few songs, and records `music_started_at`.
-3. The photo and description upload in the background, so a crash or closed tab doesn't lose them.
+1. The photo and description upload in the background, so a crash or closed tab doesn't lose them.
+2. The user spins the roulette. The server rolls a dance time from 0 to 180 seconds (two minutes on average) and a track that avoids the user's last few songs, and keeps that roll until a post is published. Spinning again, quitting or deleting the draft returns the same roll.
+3. The user taps Start, which starts the audio, since mobile browsers need a user gesture. The server copies the roll to the draft and records `music_started_at`.
 4. Screen Wake Lock keeps the screen on where supported.
 5. Music and the on-screen timer pause if the user leaves the page, then resume when they return.
-6. After 120 seconds, the client requests publication.
-7. The server publishes only if the files are present and at least 120 seconds have passed since `music_started_at`.
+6. When the rolled time is up, the client requests publication.
+7. The server publishes only if the files are present and the rolled time has passed since `music_started_at`. A roll of zero seconds publishes at Start.
+
+Roulette odds: by default the times average two minutes. A member with fewer than five posts, or whose last post was more than three days ago (fully at two weeks), is likelier to roll a short dance. The owner wants this kept from the members, so it is never sent to the page or shown.
 
 Notes:
 
-- The server enforces a minimum time, so changing the browser timer can't skip it.
+- The server enforces the rolled time, so changing the browser timer can't skip it.
 - A browser-side pause can't be fully enforced by the server. This is acceptable for a friendly group.
 - The timer proves that time passed, not that anyone danced. Start with the honor system. Motion-sensor checks are an optional later idea.
-- Fade the music out when the timer ends if a track is longer than two minutes.
+- Fade the music out when the timer ends if a track is longer than the dance.
 - Add a scheduled cleanup for abandoned drafts and their R2 files.
 
 ### Music delivery

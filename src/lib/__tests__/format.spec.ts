@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { dayNumber, formatShortDate, formatStamp, timeAgo } from '../format'
+import { dayNumber, formatClock, formatShortDate, formatStamp, timeAgo } from '../format'
 import { reactionSummary } from '../reactions'
 
 // Local-time dates, so the tests pass in any time zone.
@@ -11,6 +11,16 @@ describe('formatStamp', () => {
   it('formats as upper-case month, day, year and 24-hour time', () => {
     expect(formatStamp(at(11, 4, 21, 40))).toBe('NOV 04 2026 · 21:40')
     expect(formatStamp(at(1, 9, 0, 5))).toBe('JAN 09 2026 · 00:05')
+  })
+})
+
+describe('formatClock', () => {
+  it('formats seconds as m:ss, rounding up and never below zero', () => {
+    expect(formatClock(180)).toBe('3:00')
+    expect(formatClock(64.2)).toBe('1:05')
+    expect(formatClock(30)).toBe('0:30')
+    expect(formatClock(0)).toBe('0:00')
+    expect(formatClock(-1)).toBe('0:00')
   })
 })
 

@@ -41,7 +41,7 @@ describe('NikkiTile', () => {
     expect(wrapper.get('.seal').classes()).toContain('seal--breaking')
     expect(router.currentRoute.value.path).toBe('/')
 
-    await vi.advanceTimersByTimeAsync(550)
+    await vi.advanceTimersByTimeAsync(400)
     await flushPromises()
     expect(wrapper.find('.seal').exists()).toBe(false)
     expect(router.currentRoute.value.path).toBe('/plants/2')

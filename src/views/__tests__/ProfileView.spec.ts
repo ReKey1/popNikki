@@ -63,7 +63,9 @@ describe('ProfileView', () => {
     expect(tiles[0]!.get('img').attributes('src')).toBe('/api/posts/9/thumb')
     expect(tiles[0]!.text()).toBe('DAY 5')
     expect(tiles[1]!.text()).toBe('DAY 1')
-    expect(tiles[0]!.get('a').attributes('href')).toBe('/plants/3')
+    // Each thumbnail opens its own nikki.
+    expect(tiles[0]!.get('a').attributes('href')).toBe('/plants/3/9')
+    expect(tiles[1]!.get('a').attributes('href')).toBe('/plants/3/8')
   })
 
   it('lists drafts with practice and delete', async () => {
@@ -88,6 +90,26 @@ describe('ProfileView', () => {
     expect(fetch).toHaveBeenCalledWith('/api/posts/12', { method: 'DELETE' })
     expect(wrapper.find('.drafts').exists()).toBe(false)
     expect(wrapper.text()).toContain('DRAFTS · 0')
+  })
+
+  it('takes a draft off the list at once, and puts it back if the delete fails', async () => {
+    let answer!: (res: Response) => void
+    const fetch = stubProfile()
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const { wrapper } = await mountProfile()
+    await wrapper.findAll('.tab')[1]!.trigger('click')
+    fetch.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)))
+
+    await wrapper
+      .findAll('.drafts button')
+      .find((b) => b.text() === 'Delete')!
+      .trigger('click')
+    expect(wrapper.text()).toContain('DRAFTS · 0')
+
+    answer(Response.json({ error: 'Not now' }, { status: 500 }))
+    await flushPromises()
+    expect(wrapper.text()).toContain('DRAFTS · 1')
+    expect(wrapper.get('[role="alert"]').text()).toBe('Not now')
   })
 
   it('keeps a draft when the delete is not confirmed', async () => {

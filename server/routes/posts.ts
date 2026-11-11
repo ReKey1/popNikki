@@ -2,12 +2,12 @@ import { Hono, type Context } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 
 import { requireUser, type AppEnv } from '../lib/session'
-import { pickTrack } from './tracks'
+import { takeRoll } from './roll'
 
 const MB = 1024 * 1024
-export const LIMITS = { photo: 3 * MB, thumb: 512 * 1024, description: 1000 }
-/** How long the dance lasts before a post can be published. */
-export const DANCE_MS = 120_000
+export const LIMITS = { photo: 3 * MB, thumb: 512 * 1024, description: 1000, drafts: 20 }
+/** The dance time of a draft that was started before the roulette set one. */
+export const DEFAULT_SECONDS = 120
 
 const posts = new Hono<AppEnv>()
 
@@ -98,6 +98,12 @@ function isJpeg(value: unknown, maxSize: number): value is File {
   )
 }
 
+/** Whether the file starts like a JPEG, whatever type the upload claimed. */
+async function startsLikeJpeg(file: File): Promise<boolean> {
+  const head = new Uint8Array(await file.slice(0, 3).arrayBuffer())
+  return head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff
+}
+
 posts.post(
   '/api/posts',
   requireUser,
@@ -109,11 +115,25 @@ posts.post(
     const body = await c.req.parseBody()
     const { photo, thumb } = body
     const description = typeof body.description === 'string' ? body.description.trim() : ''
-    if (!isJpeg(photo, LIMITS.photo) || !isJpeg(thumb, LIMITS.thumb)) {
+    if (
+      !isJpeg(photo, LIMITS.photo) ||
+      !isJpeg(thumb, LIMITS.thumb) ||
+      !(await startsLikeJpeg(photo)) ||
+      !(await startsLikeJpeg(thumb))
+    ) {
       return c.json({ error: 'Send a JPEG photo and thumbnail' }, 400)
     }
     if (description.length > LIMITS.description) {
       return c.json({ error: `Keep the description under ${LIMITS.description} characters` }, 400)
+    }
+    // A cap on unposted drafts keeps one account from filling the bucket.
+    const drafts = await c.env.DB.prepare(
+      'SELECT COUNT(*) AS n FROM posts WHERE user_id = ? AND published_at IS NULL',
+    )
+      .bind(c.var.user.id)
+      .first<{ n: number }>()
+    if (drafts!.n >= LIMITS.drafts) {
+      return c.json({ error: 'Too many drafts. Post or delete one first.' }, 409)
     }
 
     const id = crypto.randomUUID()
@@ -150,7 +170,7 @@ posts.get('/api/me/drafts', requireUser, async (c) => {
 /** The viewer's own draft with the given id, or null. */
 function ownDraft(c: Context<AppEnv>) {
   return c.env.DB.prepare(
-    `SELECT id, photo_key, thumb_key, music_started_at FROM posts
+    `SELECT id, photo_key, thumb_key, music_started_at, dance_seconds FROM posts
      WHERE id = ? AND user_id = ? AND published_at IS NULL`,
   )
     .bind(Number(c.req.param('id')), c.var.user.id)
@@ -159,7 +179,16 @@ function ownDraft(c: Context<AppEnv>) {
       photo_key: string | null
       thumb_key: string | null
       music_started_at: number | null
+      dance_seconds: number | null
     }>()
+}
+
+/** Publishes a draft and uses up the member's roll, so their next nikki gets a new spin. */
+function publish(c: Context<AppEnv>, postId: number, now: number) {
+  return c.env.DB.batch([
+    c.env.DB.prepare('UPDATE posts SET published_at = ? WHERE id = ?').bind(now, postId),
+    c.env.DB.prepare('DELETE FROM rolls WHERE user_id = ?').bind(c.var.user.id),
+  ])
 }
 
 posts.delete('/api/posts/:id{[0-9]+}', requireUser, async (c) => {
@@ -171,35 +200,28 @@ posts.delete('/api/posts/:id{[0-9]+}', requireUser, async (c) => {
   return c.body(null, 204)
 })
 
-// Starts the music and the server-side clock. The body may name the track the page has already
-// loaded (from GET /api/tracks/next); otherwise, or if it's gone, one is picked here.
-// With no tracks on the playlist there is nothing to dance to, so the post is published at once.
+// Starts the music and the server-side clock, for the time and song of the member's roll
+// (spinning the roulette here if the page never did). The post is published at once when the
+// roll is zero seconds, or when the playlist is empty and there is nothing to dance to.
 posts.post('/api/posts/:id{[0-9]+}/start', requireUser, async (c) => {
   const draft = await ownDraft(c)
   if (!draft) return c.notFound()
 
-  const body = await c.req.json<{ track_id?: unknown }>().catch(() => null)
-  const chosen = Number.isInteger(body?.track_id)
-    ? await c.env.DB.prepare('SELECT id, title FROM tracks WHERE id = ?')
-        .bind(body!.track_id)
-        .first<{ id: number; title: string }>()
-    : null
-  const track = chosen ?? (await pickTrack(c.env.DB, c.var.user.id))
-
+  const roll = await takeRoll(c.env.DB, c.var.user.id)
   const now = Date.now()
-  if (!track) {
-    await c.env.DB.prepare('UPDATE posts SET published_at = ? WHERE id = ?')
-      .bind(now, draft.id)
-      .run()
+  if (!roll || roll.seconds === 0) {
+    await publish(c, draft.id, now)
     return c.json({ published: true })
   }
-  await c.env.DB.prepare('UPDATE posts SET track_id = ?, music_started_at = ? WHERE id = ?')
-    .bind(track.id, now, draft.id)
+  await c.env.DB.prepare(
+    'UPDATE posts SET track_id = ?, music_started_at = ?, dance_seconds = ? WHERE id = ?',
+  )
+    .bind(roll.track.id, now, roll.seconds, draft.id)
     .run()
-  return c.json({ track })
+  return c.json(roll)
 })
 
-// Publishes only once the full dance time has passed on the server's clock.
+// Publishes only once the rolled dance time has passed on the server's clock.
 posts.post('/api/posts/:id{[0-9]+}/publish', requireUser, async (c) => {
   const draft = await ownDraft(c)
   if (!draft) return c.notFound()
@@ -207,11 +229,12 @@ posts.post('/api/posts/:id{[0-9]+}/publish', requireUser, async (c) => {
     return c.json({ error: 'Start the music first' }, 409)
   }
   const now = Date.now()
-  const left = draft.music_started_at + DANCE_MS - now
+  const seconds = draft.dance_seconds ?? DEFAULT_SECONDS
+  const left = draft.music_started_at + seconds * 1000 - now
   if (left > 0) {
     return c.json({ error: 'Keep dancing', retry_after: Math.ceil(left / 1000) }, 409)
   }
-  await c.env.DB.prepare('UPDATE posts SET published_at = ? WHERE id = ?').bind(now, draft.id).run()
+  await publish(c, draft.id, now)
   return c.body(null, 204)
 })
 

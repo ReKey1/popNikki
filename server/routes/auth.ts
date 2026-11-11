@@ -10,10 +10,18 @@ const MAX_USERNAME = 20
 
 const auth = new Hono<AppEnv>()
 
-/** Reads a trimmed username from a JSON body, or returns null if it is missing or the wrong length. */
+/**
+ * Tidies a name so that two names that look the same are the same: compatibility forms are
+ * folded (NFKC), invisible and control characters are dropped, and spaces are collapsed.
+ */
+function cleanUsername(raw: string): string {
+  return raw.normalize('NFKC').replace(/\s/g, ' ').replace(/\p{C}/gu, '').replace(/ +/g, ' ').trim()
+}
+
+/** Reads a tidied username from a JSON body, or returns null if it is missing or the wrong length. */
 async function parseUsername(c: Context<AppEnv>): Promise<string | null> {
   const body = await c.req.json<{ username?: unknown }>().catch(() => ({ username: undefined }))
-  const username = typeof body.username === 'string' ? body.username.trim() : ''
+  const username = typeof body.username === 'string' ? cleanUsername(body.username) : ''
   return username.length >= 1 && username.length <= MAX_USERNAME ? username : null
 }
 
@@ -22,11 +30,13 @@ const isUniqueError = (err: unknown) => String(err).includes('UNIQUE')
 // NFC entry point. Always redirects so the token leaves the address bar.
 auth.get('/tag', async (c) => {
   const token = c.req.query('t')
+  // One statement finds the tag and records the tap.
   const user = token
     ? await c.env.DB.prepare(
-        'SELECT id, username FROM users WHERE token_hash = ? AND revoked_at IS NULL',
+        `UPDATE users SET last_login_at = ? WHERE token_hash = ? AND revoked_at IS NULL
+         RETURNING id, username`,
       )
-        .bind(await hashToken(token))
+        .bind(Date.now(), await hashToken(token))
         .first<{ id: number; username: string | null }>()
     : null
   if (!token || !user) return c.notFound()
@@ -42,9 +52,6 @@ auth.get('/tag', async (c) => {
     return c.redirect('/claim')
   }
 
-  await c.env.DB.prepare('UPDATE users SET last_login_at = ? WHERE id = ?')
-    .bind(Date.now(), user.id)
-    .run()
   await startSession(c, user.id)
   return c.redirect('/')
 })

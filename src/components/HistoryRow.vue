@@ -51,12 +51,19 @@ const slots = defineSlots<{ actions?(): unknown }>()
   text-decoration: none;
 }
 
+.row--link:active {
+  opacity: 0.6;
+}
+
 .row {
   display: grid;
   grid-template-columns: 96px minmax(0, 1fr);
   gap: 14px;
   padding: 14px 0;
   border-bottom: var(--border-hair);
+  transition:
+    background-color var(--dur-move),
+    opacity var(--dur-press);
 }
 
 .row--current {

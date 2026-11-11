@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 
 import BaseAvatar from '@/components/BaseAvatar.vue'
@@ -32,19 +32,23 @@ const error = ref('')
 const firstAt = computed(() => posts.value[posts.value.length - 1]?.published_at)
 const day = (at: number) => dayNumber(firstAt.value ?? at, at)
 
-onMounted(async () => {
-  const user = await session.load()
-  if (user) await Promise.all([garden.loadPosts(user.id), garden.loadDrafts()])
-})
+void session.load()
+watch(
+  () => me.value?.id,
+  (id) => id && Promise.all([garden.loadPosts(id), garden.loadDrafts()]),
+  { immediate: true },
+)
 
+/** Takes the draft off the list at once, and puts it back if the server says no. */
 async function remove(draft: Draft) {
   if (!window.confirm('Delete this draft?')) return
-  const res = await fetch(`/api/posts/${draft.id}`, { method: 'DELETE' })
-  if (!res.ok) {
-    error.value = await errorMessage(res)
-    return
-  }
-  garden.drafts = drafts.value.filter((d) => d.id !== draft.id)
+  const before = drafts.value
+  error.value = ''
+  garden.drafts = before.filter((d) => d.id !== draft.id)
+  const res = await fetch(`/api/posts/${draft.id}`, { method: 'DELETE' }).catch(() => null)
+  if (res?.ok) return
+  garden.drafts = before
+  error.value = res ? await errorMessage(res) : 'Could not delete the draft'
 }
 
 async function loggedOut() {
@@ -107,9 +111,9 @@ async function loggedOut() {
       <p v-if="error" class="error" role="alert">{{ error }}</p>
 
       <template v-if="tab === 'posted'">
-        <ul v-if="posts.length" class="grid">
-          <li v-for="post in posts" :key="post.id">
-            <RouterLink :to="`/plants/${me.id}`" class="grid__link">
+        <ul v-if="posts.length" class="grid pn-stagger">
+          <li v-for="(post, i) in posts" :key="post.id" :style="{ '--i': i }">
+            <RouterLink :to="`/plants/${me.id}/${post.id}`" class="grid__link">
               <BasePhoto
                 :src="`/api/posts/${post.id}/thumb`"
                 :alt="post.description || `Day ${day(post.published_at)}`"
@@ -129,10 +133,11 @@ async function loggedOut() {
         <p v-if="garden.drafts && !drafts.length" class="empty">
           No drafts. Quitting a practice saves one here.
         </p>
-        <div v-else-if="drafts.length" class="drafts">
+        <div v-else-if="drafts.length" class="drafts pn-stagger">
           <HistoryRow
-            v-for="draft in drafts"
+            v-for="(draft, i) in drafts"
             :key="draft.id"
+            :style="{ '--i': i }"
             card
             :day="day(draft.created_at)"
             :date="`SAVED ${formatShortDate(draft.created_at)}`"
@@ -255,6 +260,14 @@ async function loggedOut() {
   font: 600 12px var(--font-mono);
   letter-spacing: 0.08em;
   cursor: pointer;
+  transition:
+    background-color var(--dur-press),
+    color var(--dur-press),
+    transform var(--dur-press);
+}
+
+.tab:active {
+  transform: scale(0.97);
 }
 
 .tab--on {
@@ -274,6 +287,11 @@ async function loggedOut() {
 .grid__link {
   display: block;
   text-decoration: none;
+  transition: transform var(--dur-press);
+}
+
+.grid__link:active {
+  transform: scale(0.96);
 }
 
 .grid__day {

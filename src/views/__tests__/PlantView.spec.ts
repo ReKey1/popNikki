@@ -110,6 +110,38 @@ describe('PlantView', () => {
     expect(wrapper.get('.featured img').attributes('loading')).toBe('eager')
   })
 
+  it('shows the name and small photo from the garden while the nikki load', async () => {
+    const pinia = testPinia()
+    useGardenStore().plants = [
+      {
+        id: 2,
+        username: 'けんじ',
+        post_id: 9,
+        published_at: now,
+        post_count: 2,
+        first_published_at: now - 4 * DAY,
+        unseen: true,
+      },
+    ]
+    vi.stubGlobal('fetch', () => new Promise(() => {}))
+    const wrapper = mount(PlantView, {
+      props: { id: '2' },
+      global: { plugins: [pinia, testRouter()] },
+    })
+    await flushPromises()
+
+    expect(wrapper.get('h1').text()).toBe('けんじ')
+    expect(wrapper.get('main').attributes('aria-busy')).toBe('true')
+    expect(wrapper.get('main img').attributes('src')).toBe('/api/posts/9/thumb')
+  })
+
+  it('shows the small photo under the large one until that has loaded', async () => {
+    const { wrapper } = await mountPlant()
+    const photo = wrapper.get('.featured__photo')
+    expect(photo.attributes('style')).toContain('/api/posts/9/thumb')
+    expect(photo.get('img').attributes('src')).toBe('/api/posts/9/photo')
+  })
+
   it('preloads the full-size photos of every nikki', async () => {
     await mountPlant()
     expect(preloadImages).toHaveBeenCalledWith(['/api/posts/9/photo', '/api/posts/4/photo'])
@@ -238,11 +270,13 @@ describe('PlantView', () => {
     const counts = wrapper.get('.featured__counts')
     expect(counts.element.tagName).toBe('BUTTON')
     await counts.trigger('click')
+    // The sheet opens with the tap, before the names are in.
+    const dialog = wrapper.get('dialog')
+    expect(dialog.attributes('open')).toBeDefined()
+    expect(dialog.findAll('li')).toHaveLength(0)
     await flushPromises()
 
     expect(fetch).toHaveBeenCalledWith('/api/posts/9/reactions')
-    const dialog = wrapper.get('dialog')
-    expect(dialog.attributes('open')).toBeDefined()
     expect(dialog.findAll('li').map((li) => li.text())).toEqual(['Nnikki💧', 'Bbob🔥'])
     // The reactions sheet can be dragged taller, so it shows its grip.
     expect(dialog.attributes('data-snap')).toBe('half')

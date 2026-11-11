@@ -5,7 +5,8 @@ import { RouterLink, type RouteLocationRaw } from 'vue-router'
 import BasePhoto from './BasePhoto.vue'
 import BaseSeal from './BaseSeal.vue'
 
-const BREAK_MS = 550
+/** As long as the seal takes to break (see BaseSeal). */
+const BREAK_MS = 400
 
 const { sealed = false } = defineProps<{
   to: RouteLocationRaw
@@ -69,6 +70,11 @@ function tap(event: MouseEvent, navigate: (event?: MouseEvent) => unknown) {
   gap: 8px;
   color: var(--ink);
   text-decoration: none;
+  transition: transform var(--dur-press);
+}
+
+.tile:active {
+  transform: scale(0.97);
 }
 
 .tile__head {

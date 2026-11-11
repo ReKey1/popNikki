@@ -85,8 +85,8 @@ async function saveDraft() {
         placeholder="How did practice go? How's the plant?"
       />
       <BaseInfoNote
-        >Uploading starts a <b>2:00 practice</b>. Your nikki is shared when the timer runs
-        out.</BaseInfoNote
+        >The <b>roulette</b> picks your practice time and song. Your nikki is shared when the timer
+        runs out.</BaseInfoNote
       >
       <p v-if="error" class="error" role="alert">{{ error }}</p>
     </main>

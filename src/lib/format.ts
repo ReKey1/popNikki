@@ -36,6 +36,12 @@ export function timeAgo(ms: number, now = Date.now()): string {
   return `${Math.floor(days / 7)}w`
 }
 
+/** "1:30": seconds as a countdown clock. */
+export function formatClock(seconds: number): string {
+  const sec = Math.max(0, Math.ceil(seconds))
+  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`
+}
+
 const localMidnight = (ms: number) => {
   const d = new Date(ms)
   return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())

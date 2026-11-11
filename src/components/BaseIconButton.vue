@@ -39,6 +39,7 @@ const {
   font: 16px sans-serif;
   text-decoration: none;
   cursor: pointer;
+  transition: transform var(--dur-press);
 }
 
 .icon-btn--soft,

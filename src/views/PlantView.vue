@@ -24,6 +24,9 @@ const garden = useGardenStore()
 
 /** This plant's nikki: drawn at once when the garden fetched them ahead, then refreshed. */
 const data = computed(() => garden.posts[Number(props.id)] ?? null)
+/** The plant's tile in the garden, which has its name and newest photo before the nikki arrive. */
+const tile = computed(() => garden.plants?.find((p) => p.id === Number(props.id)))
+const owner = computed(() => data.value?.owner ?? tile.value)
 const error = ref('')
 
 const newest = computed(() => data.value?.posts[0])
@@ -82,40 +85,45 @@ async function react(post: Post, emoji: string | null) {
 const reactorsOpen = ref(false)
 const reactors = ref<Reactor[]>([])
 
+/** The sheet opens with the tap, and the names fill in as they arrive. */
 async function showReactors() {
   const post = featured.value
   if (!post) return
+  reactors.value = []
+  reactorsOpen.value = true
   const res = await fetchReactors(post.id)
-  if (!res.ok) {
-    error.value = await errorMessage(res)
+  if (res.ok) {
+    reactors.value = await res.json()
     return
   }
-  reactors.value = await res.json()
-  reactorsOpen.value = true
+  reactorsOpen.value = false
+  error.value = await errorMessage(res)
 }
 </script>
 
 <template>
   <p v-if="error && !data" class="status" role="alert">{{ error }}</p>
-  <template v-else-if="data">
+  <template v-else-if="owner">
     <header class="head">
       <BaseIconButton label="Back" @click="goBack(router)">←</BaseIconButton>
-      <BaseAvatar :name="data.owner.username" />
+      <BaseAvatar :name="owner.username" />
       <div class="head__text">
-        <h1 class="head__name">{{ data.owner.username }}</h1>
-        <div class="head__meta">
+        <h1 class="head__name">{{ owner.username }}</h1>
+        <div v-if="data" class="head__meta">
           <template v-if="newest">DAY {{ day(Date.now()) }} · </template
           >{{ data.posts.length }} NIKKI
         </div>
       </div>
     </header>
 
-    <main>
+    <main v-if="data">
       <p v-if="!featured" class="status">No nikki yet.</p>
-      <article v-else class="featured">
+      <!-- Keyed, so choosing another nikki brings its photo in rather than swapping it. -->
+      <article v-else :key="featured.id" class="featured">
         <BasePhoto
           :src="`/api/posts/${featured.id}/photo`"
           :alt="featured.description || `${data.owner.username}'s plant`"
+          :placeholder="`/api/posts/${featured.id}/thumb`"
           :radius="22"
           stripe="lg"
           loading="eager"
@@ -135,9 +143,11 @@ async function showReactors() {
           aria-label="See who reacted"
           @click="showReactors"
         >
+          <!-- Keyed by the count too, so a number that changes gives a small jump. -->
           <BasePill
             v-for="[emoji, n] in counts(featured)"
-            :key="emoji"
+            :key="`${emoji} ${n}`"
+            class="featured__count"
             tone="count"
             :selected="emoji === featured.my_reaction"
             >{{ emoji }} {{ n }}</BasePill
@@ -158,10 +168,11 @@ async function showReactors() {
 
       <template v-if="data.posts.length">
         <BaseSectionRule class="rule">ALL NIKKI</BaseSectionRule>
-        <div class="history">
+        <div class="history pn-stagger">
           <HistoryRow
-            v-for="post in data.posts"
+            v-for="(post, i) in data.posts"
             :key="post.id"
+            :style="{ '--i': i }"
             :current="post === featured"
             :to="{ path: `/plants/${data.owner.id}/${post.id}`, replace: true }"
             :day="day(post.published_at)"
@@ -183,6 +194,19 @@ async function showReactors() {
           </li>
         </ul>
       </BaseSheet>
+    </main>
+
+    <!-- The nikki are on their way: the small photo from the garden stands in. -->
+    <main v-else aria-busy="true">
+      <div class="featured">
+        <BasePhoto
+          :src="tile?.post_id ? `/api/posts/${tile.post_id}/thumb` : undefined"
+          :alt="`${owner.username}'s plant`"
+          :radius="22"
+          stripe="lg"
+          loading="eager"
+        />
+      </div>
     </main>
   </template>
 </template>
@@ -224,6 +248,11 @@ async function showReactors() {
 
 .featured {
   padding: 4px 16px 0;
+  animation: pn-rise var(--dur-move) var(--ease-out);
+}
+
+.featured__count {
+  animation: pn-bump var(--dur-move) var(--ease-out);
 }
 
 .featured__photo {

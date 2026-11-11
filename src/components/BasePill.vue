@@ -52,6 +52,10 @@ const { tone = 'mist', selected = false } = defineProps<{
   letter-spacing: 0;
 }
 
+.pill--count {
+  transition: border-color var(--dur-press);
+}
+
 .pill--count.pill--selected {
   border-color: var(--orange);
 }

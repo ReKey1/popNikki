@@ -1,3 +1,4 @@
+import { StorageSerializers, useLocalStorage } from '@vueuse/core'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
@@ -5,10 +6,13 @@ import { setReaction, type Draft, type Plant, type PlantPosts, type Post } from 
 
 /**
  * The garden, each plant's nikki and the viewer's drafts, kept between pages.
- * Pages draw what is here at once and refresh it in the background.
+ * Pages draw what is here at once and refresh it in the background. The garden is also
+ * remembered on the device, so the next visit opens on it without waiting for the server.
  */
 export const useGardenStore = defineStore('garden', () => {
-  const plants = ref<Plant[] | null>(null)
+  const plants = useLocalStorage<Plant[] | null>('popnikki.plants', null, {
+    serializer: StorageSerializers.object,
+  })
   const posts = ref<Record<number, PlantPosts>>({})
   const drafts = ref<Draft[] | null>(null)
 
@@ -76,7 +80,7 @@ export const useGardenStore = defineStore('garden', () => {
     if (res.ok && plant) plant.unseen = false
   }
 
-  /** Forgets everything, for a logout. */
+  /** Forgets everything, on the device too, for a logout. */
   function clear() {
     plants.value = null
     posts.value = {}

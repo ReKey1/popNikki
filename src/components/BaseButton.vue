@@ -51,8 +51,9 @@ const slots = defineSlots<{ default(): unknown; leading?(): unknown; trailing?()
   text-decoration: none;
   cursor: pointer;
   transition:
-    transform 0.08s,
-    box-shadow 0.08s;
+    transform var(--dur-tap),
+    box-shadow var(--dur-tap),
+    opacity var(--dur-press);
 }
 
 .btn:disabled {
@@ -146,6 +147,10 @@ const slots = defineSlots<{ default(): unknown; leading?(): unknown; trailing?()
 
 .btn--accent:active:not(:disabled) {
   transform: scale(0.94);
+}
+
+.btn--quiet:active:not(:disabled) {
+  transform: scale(0.95);
 }
 
 .btn--quiet,
