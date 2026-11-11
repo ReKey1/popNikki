@@ -19,26 +19,45 @@ describe('useRoulette', () => {
     vi.unstubAllGlobals()
   })
 
-  it('flickers through nonsense, then settles on the roll', async () => {
+  it('flickers the clock through nonsense, then settles on the time', async () => {
     const { roulette } = setup()
     const landed = roulette.spin(Promise.resolve(roll))
     expect(roulette.spinning.value).toBe(true)
 
-    // At full speed nothing of the result shows.
     await vi.advanceTimersByTimeAsync(400)
     expect(roulette.clock.value).toMatch(/^\d:[0-5]\d$/)
-    expect(roulette.title.value).not.toContain('Pop')
-
-    // As it slows, the song comes into focus from its first letter.
     await vi.advanceTimersByTimeAsync(1400)
     expect(roulette.spinning.value).toBe(true)
-    expect(roulette.title.value).toMatch(/^Pop/)
-    expect(roulette.title.value).toHaveLength(roll.track.title.length)
 
-    await vi.advanceTimersByTimeAsync(1500)
+    await vi.advanceTimersByTimeAsync(1000)
     expect(await landed).toEqual(roll)
     expect(roulette.spinning.value).toBe(false)
     expect(roulette.clock.value).toBe('2:30')
+    // The song is a separate roll.
+    expect(roulette.title.value).toBe('')
+    expect(roulette.revealing.value).toBe(false)
+  })
+
+  it('rolls the song after a pause, bringing it into focus from its first letter', async () => {
+    const { roulette } = setup()
+    const revealed = roulette.reveal('Pop That Lock')
+    expect(roulette.revealing.value).toBe(true)
+
+    // The time stands alone first.
+    await vi.advanceTimersByTimeAsync(300)
+    expect(roulette.title.value).toBe('')
+
+    await vi.advanceTimersByTimeAsync(300)
+    expect(roulette.title.value).toHaveLength('Pop That Lock'.length)
+    expect(roulette.title.value).not.toContain('Pop')
+
+    await vi.advanceTimersByTimeAsync(600)
+    expect(roulette.revealing.value).toBe(true)
+    expect(roulette.title.value).toMatch(/^Pop That/)
+
+    await vi.advanceTimersByTimeAsync(400)
+    await revealed
+    expect(roulette.revealing.value).toBe(false)
     expect(roulette.title.value).toBe('Pop That Lock')
   })
 
@@ -68,6 +87,9 @@ describe('useRoulette', () => {
     const { roulette } = setup()
     expect(await roulette.spin(Promise.resolve(roll))).toEqual(roll)
     expect(roulette.spinning.value).toBe(false)
+    await roulette.reveal('Pop That Lock')
+    expect(roulette.title.value).toBe('Pop That Lock')
+    expect(vi.getTimerCount()).toBe(0)
   })
 
   it('ends the spin when the page is left', async () => {

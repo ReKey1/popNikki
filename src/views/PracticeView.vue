@@ -19,7 +19,14 @@ const router = useRouter()
 const pending = usePendingPostStore()
 const garden = useGardenStore()
 const session = useSessionStore()
-const { spinning, clock: spinClock, title: spinTitle, spin: spinRoulette } = useRoulette()
+const {
+  spinning,
+  revealing,
+  clock: spinClock,
+  title: spinTitle,
+  spin: spinRoulette,
+  reveal: revealSong,
+} = useRoulette()
 
 /** Seconds the music takes to fade in, and to fade out so it's silent when the timer ends. */
 const FADE_IN = 1.5
@@ -162,10 +169,14 @@ async function spin() {
   error.value = ''
   try {
     const next = await spinRoulette(requestRoll())
-    if (next) {
-      land(next)
-      justLanded.value = true
-    } else noMusic.value = true
+    if (!next) {
+      noMusic.value = true
+      return
+    }
+    land(next)
+    justLanded.value = true
+    // The time lands first. The song rolls after it, unless there is no dance to play it for.
+    if (next.seconds) await revealSong(next.track.title)
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err)
   }
@@ -268,7 +279,7 @@ const ringDisplay = computed(() => {
   if (spinning.value) return spinClock.value || '?:??'
   return waiting.value ? '?:??' : undefined
 })
-// Until the roulette lands, the dial and the song say nothing. Every result is shown alike.
+// Until the roulette lands, the dial and the song say nothing.
 const ringCaption = computed(() => (spinning.value || waiting.value ? '' : undefined))
 const kicker = computed(() => {
   if (spinning.value || waiting.value) return 'ROULETTE'
@@ -277,7 +288,7 @@ const kicker = computed(() => {
   return preparing.value ? 'UP NEXT' : 'NOW PLAYING'
 })
 const title = computed(() => {
-  if (spinning.value) return spinTitle.value || '???'
+  if (revealing.value) return spinTitle.value || '???'
   if (waiting.value) return '???'
   if (!roll.value) return 'Press start and dance'
   return roll.value.seconds ? roll.value.track.title : ''
@@ -293,6 +304,7 @@ const buttonLabel = computed(() => {
 const buttonDisabled = computed(
   () =>
     spinning.value ||
+    revealing.value ||
     (uploading.value && !waiting.value) ||
     phase.value === 'starting' ||
     phase.value === 'publishing',
@@ -342,8 +354,8 @@ const buttonDisabled = computed(
         :class="[
           'deck__title',
           {
-            'deck__title--spin': spinning || waiting,
-            'deck__title--landed': ring === 'landed',
+            'deck__title--spin': waiting || revealing,
+            'deck__title--landed': ring === 'landed' && !revealing,
           },
         ]"
         aria-live="polite"
