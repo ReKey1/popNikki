@@ -9,8 +9,9 @@ describe('roulette', () => {
   let cookie: string
   let userId: number
 
-  const state = async (as = cookie) =>
-    (await request('/api/roll', { headers: { Cookie: as } })).json<{ roll: Roll | null }>()
+  /** The rolls the server is holding, as (member, seconds) pairs. */
+  const saved = async () =>
+    (await db.prepare('SELECT user_id, seconds FROM rolls ORDER BY user_id').all()).results
   const spin = async (as = cookie) =>
     (
       await request('/api/roll', {
@@ -44,7 +45,6 @@ describe('roulette', () => {
   afterEach(() => vi.restoreAllMocks())
 
   it('needs a session', async () => {
-    expect((await request('/api/roll')).status).toBe(401)
     const res = await request('/api/roll', {
       method: 'POST',
       headers: { Origin: 'http://localhost' },
@@ -52,11 +52,11 @@ describe('roulette', () => {
     expect(res.status).toBe(401)
   })
 
-  it('has no roll until the member spins, and looking spins nothing', async () => {
+  it('can only be spun, never looked up', async () => {
     await addTrack('beat')
-    expect((await state()).roll).toBeNull()
-    expect((await state()).roll).toBeNull()
-    expect((await db.prepare('SELECT COUNT(*) AS n FROM rolls').first<{ n: number }>())!.n).toBe(0)
+    const res = await request('/api/roll', { headers: { Cookie: cookie } })
+    expect(res.status).toBe(404)
+    expect(await saved()).toEqual([])
   })
 
   it('lands on a dance time and a song', async () => {
@@ -64,7 +64,7 @@ describe('roulette', () => {
     const { roll } = await spin()
     expect(SECONDS).toContain(roll!.seconds)
     expect(roll!.track).toEqual({ id: trackId, title: 'beat' })
-    expect((await state()).roll).toEqual(roll)
+    expect(await saved()).toEqual([{ user_id: userId, seconds: roll!.seconds }])
   })
 
   it('keeps the same roll however often the member spins', async () => {
@@ -82,9 +82,14 @@ describe('roulette', () => {
       )
       .bind(userId)
       .run()
-    const bobCookie = await logIn((await addUser('bob')).token)
-    expect((await state(bobCookie)).roll).toBeNull()
-    expect((await state()).roll!.seconds).toBe(150)
+    const bob = await addUser('bob')
+    vi.spyOn(Math, 'random').mockReturnValue(0.5)
+    expect((await spin(await logIn(bob.token))).roll!.seconds).toBe(60)
+    expect((await spin()).roll!.seconds).toBe(150)
+    expect(await saved()).toEqual([
+      { user_id: userId, seconds: 150 },
+      { user_id: bob.id, seconds: 60 },
+    ])
   })
 
   it('has nothing to roll when the playlist is empty', async () => {
@@ -111,7 +116,7 @@ describe('roulette', () => {
     const trackId = await addTrack('beat')
     await spin()
     await db.prepare('DELETE FROM tracks WHERE id = ?').bind(trackId).run()
-    expect((await state()).roll).toBeNull()
+    expect(await saved()).toEqual([])
   })
 
   it('rolls shorter for a new member than for a regular, and tells neither', async () => {
@@ -134,7 +139,6 @@ describe('roulette', () => {
     // Nothing in either answer says what the odds were.
     expect(Object.keys(body)).toEqual(['roll'])
     expect(Object.keys(body.roll).sort()).toEqual(['seconds', 'track'])
-    expect(Object.keys(await state(bobCookie))).toEqual(['roll'])
   })
 
   it('rolls shorter again for a regular who has been away', async () => {

@@ -35,8 +35,6 @@ const FADE_OUT = 3
 const phase = ref<'ready' | 'starting' | 'running' | 'paused' | 'publishing' | 'done'>('ready')
 /** What the roulette landed on: how long to dance, and to which song. Null until it has. */
 const roll = ref<Roll | null>(null)
-/** The roll was spun on this page just now, so it gets its landing animation. */
-const justLanded = ref(false)
 /** The playlist is empty: there is nothing to roll, and START posts at once. */
 const noMusic = ref(false)
 /** Seconds left. This clock only drives the display. The server checks the real time. */
@@ -146,15 +144,6 @@ function land(next: Roll) {
   preload(next.track)
 }
 
-/** Shows the roll the member already has: coming back to a draft doesn't spin again. */
-async function loadRoll() {
-  const res = await fetch('/api/roll')
-  // On failure SPIN asks the server instead.
-  if (!res.ok) return
-  const { roll: waitingRoll } = (await res.json()) as { roll: Roll | null }
-  if (waitingRoll && !roll.value && !spinning.value) land(waitingRoll)
-}
-
 async function requestRoll(): Promise<Roll | null> {
   const res = await fetch('/api/roll', { method: 'POST' })
   if (!res.ok) throw new Error(await errorMessage(res))
@@ -164,7 +153,10 @@ async function requestRoll(): Promise<Roll | null> {
   return next
 }
 
-/** Spins the roulette. The server rolls once and remembers, so spinning again changes nothing. */
+/**
+ * Spins the roulette. The page spins every time it opens, even for a draft that was spun
+ * before: the server rolls once and remembers, so the spin lands on the same result.
+ */
 async function spin() {
   error.value = ''
   try {
@@ -174,7 +166,6 @@ async function spin() {
       return
     }
     land(next)
-    justLanded.value = true
     // The time lands first. The song rolls after it, unless there is no dance to play it for.
     if (next.seconds) await revealSong(next.track.title)
   } catch (err) {
@@ -252,7 +243,6 @@ function onVisibility() {
 }
 onMounted(() => {
   document.addEventListener('visibilitychange', onVisibility)
-  void loadRoll().catch(() => {})
   if (postId.value === null) void waitForUpload(pending.upload)
 })
 onBeforeUnmount(() => {
@@ -273,7 +263,7 @@ const preparing = computed(() => phase.value === 'ready' || phase.value === 'sta
 const ring = computed(() => {
   if (spinning.value) return 'spinning'
   if (waiting.value) return 'idle'
-  return justLanded.value && preparing.value ? 'landed' : undefined
+  return roll.value && preparing.value ? 'landed' : undefined
 })
 const ringDisplay = computed(() => {
   if (spinning.value) return spinClock.value || '?:??'
